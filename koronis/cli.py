@@ -58,17 +58,24 @@ def _dataset(seed: int, k: int, camouflage: float = 0.0) -> pd.DataFrame:
     return inject(bg, [spec], seed=seed)
 
 
-def _calibration_set() -> pd.DataFrame:
-    """A third split, drawn from the TRAINING distribution, used only to pick
-    the operating threshold.
+def _calibration_set(seed: int = 2) -> pd.DataFrame:
+    """A third split, used only to pick the operating threshold.
 
     Choosing a threshold with test labels optimises detection time, false
     positives and rupees prevented against the answers - the operating-point
-    results stop being held out. Calibration comes from the same distribution
-    as training because that is what a deployed system would actually have:
-    you tune on attacks you have already seen, then meet a new one.
+    results stop being held out. The campaign morphology comes from the
+    TRAINING range, because that is what a deployed system would actually have
+    seen: you tune on attacks you already know, then meet a new one.
+
+    Crucially it carries ONE campaign, not the nine that training needs for
+    variety. Prevalence matters here in a way it does not for fitting: with
+    nine campaigns the positive rate reaches 37%, and under the rupee cost
+    model "alert on every event" then becomes genuinely optimal - so the
+    threshold search returns a detector that fires on the whole stream. A
+    single campaign gives ~6% prevalence, matching the test split and a
+    plausible deployment, so the chosen threshold means something.
     """
-    return _train_set(seed=2)
+    return _dataset(seed, k=max(TRAIN_KS), camouflage=1.0)
 
 
 def _train_set(seed: int = 0) -> pd.DataFrame:
@@ -126,7 +133,7 @@ def _run_once(seed: int = 0) -> pd.DataFrame:
     an interval.
     """
     train = _train_set(seed * 10)
-    calib = _train_set(seed * 10 + 2)
+    calib = _calibration_set(seed * 10 + 2)
     test = _dataset(seed * 10 + 1, TEST_K, TEST_CAMO)
     taus, gbdt, kor = _fit_all(train, seed=seed)
     y = test["label"].to_numpy()
@@ -266,7 +273,7 @@ def frontier() -> pd.DataFrame:
 
 def latency() -> pd.DataFrame:
     train = _train_set(0)
-    calib = _train_set(2)
+    calib = _calibration_set(2)
     test = _dataset(1, TEST_K, TEST_CAMO)
     taus, gbdt, kor = _fit_all(train)
     y_cal = calib["label"].to_numpy()
@@ -303,7 +310,7 @@ def latency() -> pd.DataFrame:
 
 def _replay_setup():
     """Fit, freeze the threshold on calibration, and return the test stream."""
-    train, calib = _train_set(0), _train_set(2)
+    train, calib = _train_set(0), _calibration_set(2)
     test = _dataset(1, TEST_K, TEST_CAMO)
     taus, gbdt, kor = _fit_all(train)
     thr, _ = cost_optimal_threshold(_raw(kor.score_events(calib)),
@@ -322,8 +329,8 @@ def replay() -> dict:
     test, kor, taus, thr = _replay_setup()
     vel = MultiEntityVelocityDetector(taus, WINDOW_S).score_events(test)
     vel_thr, _ = cost_optimal_threshold(
-        _raw(MultiEntityVelocityDetector(taus, WINDOW_S).score_events(_train_set(2))),
-        _train_set(2)["label"].to_numpy(),
+        _raw(MultiEntityVelocityDetector(taus, WINDOW_S).score_events(_calibration_set(2))),
+        _calibration_set(2)["label"].to_numpy(),
         COST_PER_ATTEMPT_INR, COST_PER_FALSE_BLOCK_INR)
 
     stream = StreamingKoronis(kor, threshold=thr, window_s=WINDOW_S)
@@ -370,12 +377,74 @@ def replay() -> dict:
     RESULTS.mkdir(exist_ok=True)
     path = RESULTS / "replay.json"
     path.write_text(json.dumps(artifact, separators=(",", ":")))
+    _write_demo_subset(artifact)
     m = artifact["meta"]
     print(f"wrote {path}  ({path.stat().st_size/1024:.0f} KB, {m['n_events']} events)")
     print(f"  koronis threshold {m['threshold']:.4f}, first campaign alert at "
           f"t = {m['koronis_first_alert_t']}s")
     print(f"  velocity ever alerts on the campaign: {m['velocity_ever_alerts']}")
     return artifact
+
+
+DEMO_PRE_S, DEMO_POST_S, DEMO_BG_STRIDE = 60.0, 120.0, 4
+# The visualisation timeline covers the campaign, not the 30 days of
+# background traffic surrounding it. Events outside this band are ambient
+# noise for the demo and would flatten the time axis to uselessness.
+DEMO_BAND_S = (-300.0, 3900.0)
+
+
+def _write_demo_subset(artifact: dict) -> None:
+    """A smaller, deterministic subset for the demo site.
+
+    The full replay stays untouched and auditable. This exists only so a web
+    page can animate a readable stream instead of six thousand rows. Nothing
+    is recomputed: every field is copied verbatim, and the metadata says
+    plainly that reported metrics come from the full replay, so a viewer can
+    never mistake the visualisation for the experiment.
+
+    Kept: every campaign event, and every event - campaign or not - inside a
+    window around the first alert, so the moment of detection is shown with
+    its real surrounding traffic. Outside that window, background is sampled
+    on a fixed stride, which is deterministic and needs no RNG.
+    """
+    first = artifact["meta"]["koronis_first_alert_t"]
+    lo = (first if first is not None else 0.0) - DEMO_PRE_S
+    hi = (first if first is not None else 0.0) + DEMO_POST_S
+
+    band_lo, band_hi = DEMO_BAND_S
+    kept, bg_i = [], 0
+    for e in artifact["events"]:
+        if e["campaign"]:
+            kept.append(e)
+            continue
+        if not (band_lo <= e["t"] <= band_hi):
+            continue                       # outside the visualised band
+        if lo <= e["t"] <= hi:
+            kept.append(e)                 # full traffic around the alert
+        else:
+            if bg_i % DEMO_BG_STRIDE == 0:
+                kept.append(e)
+            bg_i += 1
+    kept.sort(key=lambda e: e["t"])
+
+    meta = dict(artifact["meta"])
+    meta["subset"] = {
+        "note": ("Visualisation subset only; metrics are computed from the "
+                 "full 6,400-event replay in results/replay.json."),
+        "kept_events": len(kept),
+        "full_events": len(artifact["events"]),
+        "rule": (f"all campaign events; within t in [{DEMO_BAND_S[0]:.0f}s, "
+                 f"{DEMO_BAND_S[1]:.0f}s]: all traffic within -{DEMO_PRE_S:.0f}s/"
+                 f"+{DEMO_POST_S:.0f}s of the first alert, background elsewhere "
+                 f"sampled every {DEMO_BG_STRIDE}th event"),
+        "band_s": list(DEMO_BAND_S),
+        "deterministic": True,
+    }
+    out = RESULTS / "replay_demo.json"
+    out.write_text(json.dumps({"meta": meta, "events": kept},
+                              separators=(",", ":")))
+    print(f"wrote {out}  ({out.stat().st_size/1024:.0f} KB, "
+          f"{len(kept)} of {len(artifact['events'])} events)")
 
 
 def benchmark(n_warmup: int = 200) -> dict:

@@ -56,7 +56,9 @@ threshold `τ`.
 
 **Claim 1 — threshold detectors are blind above a spread.**
 Attempts per entity is `n/k`. Firing requires `n/k > τ`, so an attacker with `k ≥ n/τ`
-escapes **for any n**. And `τ` cannot simply be lowered: legitimate heavy users — offices,
+escapes **for any n**. With counters on several entity types the engine fires if *any*
+trips, so blindness needs `k ≥ n / min(τ)` — the binding constraint is the most sensitive
+counter, not the least. And `τ` cannot simply be lowered: legitimate heavy users — offices,
 shared CGNAT addresses — put a floor under it. In this repo that floor is *measured*, not
 assumed: `tune_velocity` picks the most sensitive threshold per entity that still respects
 a stated false-positive budget on clean traffic.

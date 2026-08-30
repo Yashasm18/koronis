@@ -69,9 +69,13 @@ def sweep(n_values: list[int], k_values: list[int], fp_budget: float,
     calib = inject(calib_bg, calib_specs, seed=seed + 200)
     cal_scores = model.score_events(calib)
     thr = float(np.quantile(cal_scores, 1.0 - calib["label"].mean()))
-    # The binding constraint is the most permissive counter: the campaign is
-    # blind to the engine only once it clears every one of them.
-    tau_max = max(taus[e] for e in VELOCITY_ENTITIES)
+    # A multi-entity engine fires if ANY counter trips, so a campaign is blind
+    # only once it clears EVERY one. Blindness on entity e needs k >= n/tau_e,
+    # so clearing all of them needs k >= max_e(n/tau_e) = n / min_e(tau_e).
+    # The binding constraint is therefore the MOST SENSITIVE counter - the
+    # smallest tau - not the largest. Using the largest understates the
+    # boundary and would credit the baseline with blindness it does not have.
+    tau_binding = min(taus[e] for e in VELOCITY_ENTITIES)
 
     rows = []
     for n in n_values:
@@ -85,7 +89,7 @@ def sweep(n_values: list[int], k_values: list[int], fp_budget: float,
             vel = MultiEntityVelocityDetector(taus, window_s).score_events(ev)
             kor = model.score_events(ev)          # frozen model, unseen stream
 
-            boundary = predicted_boundary_k(n, tau_max)
+            boundary = predicted_boundary_k(n, tau_binding)
             rows.append({
                 "n": n,
                 "k": k,
@@ -94,6 +98,7 @@ def sweep(n_values: list[int], k_values: list[int], fp_budget: float,
                 "koronis_detected": bool((kor[y] >= thr).any()),
                 "predicted_k_boundary": boundary,
                 "velocity_blind_predicted": bool(k >= boundary),
-                "tau_max": tau_max,
+                "tau_binding": tau_binding,
+                "taus": str(taus),
             })
     return pd.DataFrame(rows)

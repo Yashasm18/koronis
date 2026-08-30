@@ -27,15 +27,30 @@ def test_tighter_budget_forces_a_higher_threshold():
     assert all(tight[e] >= loose[e] for e in loose)
 
 
+def _binding_tau(taus):
+    """A multi-entity engine fires if ANY counter trips, so the campaign must
+    clear every one to be blind. The binding constraint is the smallest tau."""
+    return min(taus.values())
+
+
 def test_tuned_baseline_still_catches_a_concentrated_campaign():
-    """A fair baseline must be genuinely strong where it should be strong."""
+    """A fair baseline must be genuinely strong where it should be strong.
+
+    k is derived from the measured thresholds rather than hard-coded: what
+    counts as 'concentrated' depends on how dense the legitimate traffic is,
+    so a fixed k would silently stop testing the claim when the traffic model
+    changes - which is exactly what happened once.
+    """
     bg = _bg()
     taus = tune_velocity(bg, window_s=3600.0, fp_budget=0.01)
-    spec = CampaignSpec(n_attempts=400, k_devices=2, k_ips=2,
+    n = 400
+    k = max(int(n / _binding_tau(taus)) // 4, 1)      # well inside the boundary
+    spec = CampaignSpec(n_attempts=n, k_devices=k, k_ips=k, n_bins=k,
                         duration_s=3600.0, start_ts=float(bg["ts"].iloc[300]))
     ev = inject(bg, [spec], seed=0)
     s = MultiEntityVelocityDetector(taus, window_s=3600.0).score_events(ev)
-    assert s[ev["label"].to_numpy() == 1].max() > 0
+    assert s[ev["label"].to_numpy() == 1].max() > 0, \
+        f"k={k} is below the boundary n/min(tau)={n/_binding_tau(taus):.0f}; should fire"
 
 
 def test_partial_spread_is_still_caught():
@@ -48,7 +63,11 @@ def test_partial_spread_is_still_caught():
     """
     bg = _bg()
     taus = tune_velocity(bg, window_s=3600.0, fp_budget=0.01)
-    spec = CampaignSpec(n_attempts=400, k_devices=400, k_ips=400, n_bins=2,
+    n = 400
+    # Spread devices and IPs wide, but concentrate BINs enough to trip that
+    # counter on its own.
+    k_bin = max(int(n / taus["bin_id"]) // 4, 1)
+    spec = CampaignSpec(n_attempts=n, k_devices=n, k_ips=n, n_bins=k_bin,
                         duration_s=3600.0, start_ts=float(bg["ts"].iloc[300]))
     ev = inject(bg, [spec], seed=0)
     s = MultiEntityVelocityDetector(taus, window_s=3600.0).score_events(ev)
@@ -60,8 +79,11 @@ def test_tuned_baseline_blind_to_fully_spread_campaign():
     entity. That is the morphology the graph model has to earn its keep on."""
     bg = _bg()
     taus = tune_velocity(bg, window_s=3600.0, fp_budget=0.01)
-    spec = CampaignSpec(n_attempts=400, k_devices=400, k_ips=400, n_bins=400,
+    n = 400
+    k = max(int(n / _binding_tau(taus)) * 2, 2)      # comfortably past it
+    spec = CampaignSpec(n_attempts=n, k_devices=k, k_ips=k, n_bins=k,
                         duration_s=3600.0, start_ts=float(bg["ts"].iloc[300]))
     ev = inject(bg, [spec], seed=0)
     s = MultiEntityVelocityDetector(taus, window_s=3600.0).score_events(ev)
-    assert s[ev["label"].to_numpy() == 1].max() == 0
+    assert s[ev["label"].to_numpy() == 1].max() == 0, \
+        f"k={k} is past the boundary n/min(tau)={n/_binding_tau(taus):.0f}; must be blind"

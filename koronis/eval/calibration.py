@@ -46,8 +46,17 @@ def cost_optimal_threshold(scores: np.ndarray, labels: np.ndarray,
     """
     scores = np.asarray(scores, dtype=float)
     labels = np.asarray(labels)
-    best_t, best_c = 0.5, float("inf")
     candidates = np.unique(np.round(scores, 4))
+
+    # Degenerate case: a detector that assigns every event the same score
+    # carries no information. Thresholding at that value would fire on the
+    # entire stream, which reads as a catastrophic false-positive rate rather
+    # than what it is - a detector with nothing to say. Return a threshold
+    # above the range so it abstains instead.
+    if candidates.size <= 1:
+        return float(candidates[0] + 1.0 if candidates.size else 1.0), float("inf")
+
+    best_t, best_c = 0.5, float("inf")
     for t in candidates:
         pred = scores >= t
         cost = (c_fn * ((labels == 1) & ~pred).sum()

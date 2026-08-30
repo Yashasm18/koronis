@@ -19,10 +19,27 @@ def test_shared_entity_returns_one_score_per_row():
     assert SharedEntityDetector().score_events(ev).shape == (len(ev),)
 
 
-def test_shared_entity_ranks_campaign_above_background():
-    """The graph signal must exist without learning, or the GNN has nothing
-    to sharpen."""
-    ev = _data()
+def test_shared_entity_is_defeated_by_dense_legitimate_traffic():
+    """Raw co-occurrence counting does NOT separate a spread campaign once the
+    background is realistically dense.
+
+    On thin traffic a campaign is nearly all of the co-occurrence in its
+    window, so plain counting looks strong - an earlier version of this repo
+    reported exactly that. With legitimate traffic at a realistic rate, shared
+    devices, IPs and BINs are everywhere and the campaign no longer stands out
+    by volume alone. This is why the learned, relation-weighted, heterophily-
+    gated model earns its place, and the test records the finding so it cannot
+    quietly regress.
+    """
+    ev = _data(k=60, camo=1.0)
+    s = SharedEntityDetector().score_events(ev)
+    y = ev["label"].to_numpy() == 1
+    assert s[y].mean() <= s[~y].mean() * 1.10
+
+
+def test_shared_entity_does_separate_a_concentrated_campaign():
+    """It is not useless - it works where the campaign really is a burst."""
+    ev = _data(k=3, camo=0.0)
     s = SharedEntityDetector().score_events(ev)
     y = ev["label"].to_numpy() == 1
     assert s[y].mean() > s[~y].mean()

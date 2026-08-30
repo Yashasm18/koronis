@@ -95,14 +95,22 @@ def tune_velocity(background: pd.DataFrame, window_s: float,
     per_entity_budget = fp_budget / max(len(entities), 1)
     taus: dict[str, int] = {}
     for entity in entities:
+        # Search the full feasible range rather than a fixed cap. On dense
+        # traffic the busiest legitimate entity can carry hundreds of events,
+        # so a fixed ceiling would declare the baseline unusable when a valid
+        # threshold exists just above it - unfair to the baseline, and it would
+        # flatter this project.
+        ceiling = int(background[entity].value_counts().max()) + 2
         chosen = None
-        for tau in range(2, 201):
+        for tau in range(2, ceiling + 1):
             scores = VelocityDetector(tau=tau, window_s=window_s,
                                       entity=entity).score_events(background)
             if false_positive_rate(scores) <= per_entity_budget:
                 chosen = tau
                 break
-        # If even tau=200 exceeds the budget, this entity is too noisy to gate
-        # on; park it above the range so it never fires.
-        taus[entity] = chosen if chosen is not None else 201
+        # If no threshold in range meets the budget, this entity cannot be
+        # gated on at all at this false-positive budget. Park it above every
+        # observable count so the counter never fires - which is the honest
+        # reading, not "fires on everything".
+        taus[entity] = chosen if chosen is not None else ceiling + 1
     return taus
