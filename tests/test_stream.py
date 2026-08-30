@@ -1,0 +1,77 @@
+import numpy as np
+import pandas as pd
+import pytest
+
+from koronis.data.background import load_background
+from koronis.data.campaigns import inject
+from koronis.data.schema import CampaignSpec
+from koronis.models.koronis import KoronisDetector
+from koronis.stream import StreamingKoronis, replay
+
+
+@pytest.fixture(scope="module")
+def fitted():
+    bg = load_background(path=None, n_rows=1500, seed=0)
+    spec = CampaignSpec(n_attempts=200, k_devices=8, k_ips=8, n_bins=8,
+                        duration_s=3600.0, start_ts=float(bg["ts"].iloc[200]))
+    ev = inject(bg, [spec], seed=0)
+    det = KoronisDetector(seed=0, window_s=3600.0)
+    det.fit(ev, epochs=15)
+    return det, ev
+
+
+def test_streaming_matches_batch_scores(fitted):
+    """The parity guarantee: replaying one event at a time must reproduce the
+    batch scores. Backwards-pointing edges are what make this possible; if that
+    invariant ever breaks, this test is what catches it."""
+    det, ev = fitted
+    batch = det.score_events(ev)
+    streamed = np.array([r["score"] for r in replay(ev, det, threshold=0.5)])
+    assert streamed.shape == batch.shape
+    assert np.allclose(streamed, batch, atol=1e-5), \
+        f"max |diff| = {np.abs(streamed - batch).max():.3e}"
+
+
+def test_push_never_sees_future_events(fitted):
+    """Scoring a prefix must give identical results to scoring the whole
+    stream, for the events in that prefix."""
+    det, ev = fitted
+    half = len(ev) // 2
+    full = [r["score"] for r in replay(ev, det, threshold=0.5)][:half]
+    prefix = [r["score"] for r in
+              replay(ev.iloc[:half].reset_index(drop=True), det, threshold=0.5)]
+    assert np.allclose(full, prefix, atol=1e-6)
+
+
+def test_emits_the_required_fields(fitted):
+    det, ev = fitted
+    out = StreamingKoronis(det, threshold=0.5).push(ev.iloc[0])
+    for key in ("ts", "event_id", "score", "threshold", "alert",
+                "linked_prior_events", "evidence", "ring"):
+        assert key in out
+    assert set(out["evidence"]) == {"device_id", "ip_id", "bin_id", "email_domain"}
+
+
+def test_first_event_has_no_links(fitted):
+    det, ev = fitted
+    out = StreamingKoronis(det, threshold=0.5).push(ev.iloc[0])
+    assert out["linked_prior_events"] == 0
+    assert out["ring"]["alerts_in_window"] in (0, 1)
+
+
+def test_alert_follows_the_frozen_threshold(fitted):
+    det, ev = fitted
+    rows = replay(ev, det, threshold=0.5)
+    for r in rows:
+        assert r["alert"] == (r["score"] >= 0.5)
+        assert r["threshold"] == 0.5
+
+
+def test_window_bounds_memory(fitted):
+    """Entity buckets must expire, or a long stream grows without limit."""
+    det, ev = fitted
+    s = StreamingKoronis(det, threshold=0.5, window_s=60.0)
+    for _, row in ev.iterrows():
+        s.push(row)
+    live = sum(len(d) for rel in s._index.values() for d in rel.values())
+    assert live < len(ev) * len(s._index)

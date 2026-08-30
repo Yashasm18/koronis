@@ -2,7 +2,7 @@
 
 **Detecting distributed card-testing campaigns that per-entity velocity rules cannot see — at any threshold.**
 
-[![tests](https://img.shields.io/badge/tests-49%20passing-2ea44f)](tests/)
+[![tests](https://img.shields.io/badge/tests-55%20passing-2ea44f)](tests/)
 [![python](https://img.shields.io/badge/python-3.11%2B-3776ab)](https://www.python.org/)
 [![graph libs](https://img.shields.io/badge/graph%20libraries-none-8a3ffc)](koronis/models/layers.py)
 [![track](https://img.shields.io/badge/Razorpay%20Buildathon-Track%2002%20·%20AI%20Risk%20Manager-0c2451)](https://razorpay.com/buildathon/)
@@ -103,9 +103,9 @@ that boundary, fully camouflaged, with entirely unseen entities — so the hold-
 
 **The whole protocol is repeated across 10 independent trials** — each redrawing the
 background traffic, the campaign entities, the calibration stream and the model
-initialisation, while holding the held-out morphology fixed. Intervals are median with
-2.5th/97.5th percentiles, because several of these metrics are visibly skewed and a normal
-approximation would misrepresent the tails.
+initialisation, while holding the held-out morphology fixed. Intervals are the median with the 2.5th and 97.5th percentiles **observed across the ten
+runs**. They describe the spread actually seen, not a population confidence interval — ten
+draws is good evidence of stability, not statistical certainty.
 
 Scores are used **raw**. Rescaling each split by its own maximum would let every split
 redefine what a score means, hollowing out the claim that the threshold was frozen.
@@ -164,6 +164,37 @@ concrete. Raw co-occurrence counting does find the campaign — but not until **
 because it needs that long to accumulate enough shared-entity mass to cross its threshold.
 Koronis is already at 0.83 precision at **60 seconds**, a **10× latency difference** on the
 same underlying structure. When you detect determines how much you save.
+
+## Streaming replay
+
+The detector runs as a **strictly causal stream**: `StreamingKoronis.push(event)` scores one
+event at a time, and no future event is reachable from it. Per event it emits the raw score,
+the frozen calibration threshold, the alert decision, how many prior events it linked to,
+which relations supplied those links, and a rolling ring summary.
+
+**Streaming reproduces batch scores exactly**, not approximately. That falls out of the
+backwards-in-time edge rule: a node's layer-1 representation depends only on events that
+preceded it, so layer-1 outputs can be cached as the stream advances and layer-2 computed
+from neighbours' cached values. `tests/test_stream.py` asserts the two agree to `1e-5`, and
+that scoring a prefix matches scoring the full stream — which is what makes the latency
+numbers meaningful rather than a batch model dressed up as a stream.
+
+### Per-event inference latency
+
+Measured over 6,200 events after 200 warm-up, timing only `push` — neighbour lookup plus two
+message-passing steps. Dataset construction and model fitting are excluded, since neither
+happens per event in deployment.
+
+| p50 | p95 | p99 | mean | throughput |
+|---:|---:|---:|---:|---:|
+| **1.01 ms** | **2.56 ms** | 6.53 ms | 1.30 ms | ~770 events/sec |
+
+Entity buckets expire on the window, so memory is bounded by window occupancy rather than
+stream length — a test holds that too. Reproduce with `python -m koronis.cli benchmark`.
+
+On the held-out stream, Koronis raises its first campaign alert at **t = 14.8 s** while the
+tuned velocity engine never alerts on the campaign at all. `results/replay.json` carries the
+full per-event trace.
 
 ## How it works
 
@@ -274,7 +305,9 @@ python -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/python -m koronis.cli ablation      # the headline table
 .venv/bin/python -m koronis.cli frontier      # predicted vs measured boundary
 .venv/bin/python -m koronis.cli latency       # precision/recall over time
-.venv/bin/python -m koronis.cli seeds         # 5 seeds, mean +/- 95% CI
+.venv/bin/python -m koronis.cli seeds         # 10 trials, median + across-run range
+.venv/bin/python -m koronis.cli replay        # causal event-by-event replay -> JSON
+.venv/bin/python -m koronis.cli benchmark     # p50/p95 per-event inference latency
 ```
 
 Results are written to `results/*.csv`. Every number in this README comes from those files.

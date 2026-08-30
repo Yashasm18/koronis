@@ -4,8 +4,12 @@
     python -m koronis.cli frontier    # predicted vs measured boundary
     python -m koronis.cli latency     # precision/recall/INR over time
     python -m koronis.cli seeds       # repeat across seeds, report intervals
+    python -m koronis.cli replay      # causal event-by-event replay -> JSON
+    python -m koronis.cli benchmark   # p50/p95 per-event inference latency
 """
+import json
 import sys
+import time
 from pathlib import Path
 
 import numpy as np
@@ -22,6 +26,7 @@ from .models.gbdt import GBDTDetector
 from .models.heuristic import DeclineBurstDetector, SharedEntityDetector
 from .models.koronis import KoronisDetector
 from .models.velocity import MultiEntityVelocityDetector, tune_velocity
+from .stream import StreamingKoronis
 
 RESULTS = Path("results")
 WINDOW_S = 3600.0
@@ -195,10 +200,11 @@ def seeds(n_seeds: int = 10) -> pd.DataFrame:
     with full camouflage, so every trial asks the same extrapolation question
     of a differently-sampled world.
 
-    Intervals are reported as median with 2.5th/97.5th percentiles rather than
-    mean +/- 1.96*sd, because several of these metrics are visibly skewed - a
-    detector that collapses on some draws has a long left tail that a normal
-    approximation misrepresents.
+    Intervals are the median with the 2.5th/97.5th percentiles OBSERVED ACROSS
+    RUNS. They are an empirical spread, not a population confidence interval:
+    ten draws is good evidence of stability, not statistical certainty. A
+    normal approximation would be worse still here, since a detector that
+    collapses on some draws has a long left tail.
     """
     runs = [_run_once(s) for s in range(n_seeds)]
     allr = pd.concat(runs, ignore_index=True)
@@ -233,7 +239,7 @@ def seeds(n_seeds: int = 10) -> pd.DataFrame:
     out = pd.DataFrame(rows)
     out.to_csv(RESULTS / "seeds_summary.csv", index=False)
 
-    print(f"\n{n_seeds} independent trials; median [2.5th, 97.5th percentile]\n")
+    print(f"\n{n_seeds} independent trials; median [2.5th, 97.5th percentile across runs]\n")
     for _, r in out.iterrows():
         print(f"  {r['detector']:>15}"
               f"  PR-AUC {r['pr_auc_median']:.3f} [{r['pr_auc_lo95']:.3f}, {r['pr_auc_hi95']:.3f}]"
@@ -295,7 +301,124 @@ def latency() -> pd.DataFrame:
     return df
 
 
+def _replay_setup():
+    """Fit, freeze the threshold on calibration, and return the test stream."""
+    train, calib = _train_set(0), _train_set(2)
+    test = _dataset(1, TEST_K, TEST_CAMO)
+    taus, gbdt, kor = _fit_all(train)
+    thr, _ = cost_optimal_threshold(_raw(kor.score_events(calib)),
+                                    calib["label"].to_numpy(),
+                                    COST_PER_ATTEMPT_INR, COST_PER_FALSE_BLOCK_INR)
+    return test, kor, taus, float(thr)
+
+
+def replay() -> dict:
+    """Replay the held-out stream one event at a time and write the artifact.
+
+    Strictly causal: the scorer sees no event before it arrives. Velocity
+    scores are included alongside so the demo can show the rules engine
+    staying silent on the same stream.
+    """
+    test, kor, taus, thr = _replay_setup()
+    vel = MultiEntityVelocityDetector(taus, WINDOW_S).score_events(test)
+    vel_thr, _ = cost_optimal_threshold(
+        _raw(MultiEntityVelocityDetector(taus, WINDOW_S).score_events(_train_set(2))),
+        _train_set(2)["label"].to_numpy(),
+        COST_PER_ATTEMPT_INR, COST_PER_FALSE_BLOCK_INR)
+
+    stream = StreamingKoronis(kor, threshold=thr, window_s=WINDOW_S)
+    onset = float(test[test["label"] == 1]["ts"].min())
+
+    events = []
+    for i, (_, row) in enumerate(test.iterrows()):
+        out = stream.push(row)
+        events.append({
+            "t": round(out["ts"] - onset, 2),
+            "score": out["score"],
+            "alert": out["alert"],
+            "linked": out["linked_prior_events"],
+            "ev": out["evidence"],
+            "vel": round(float(vel[i]), 3),
+            "vel_alert": bool(vel[i] >= vel_thr),
+            "amount": round(float(row["amount"]), 2),
+            "approved": bool(row["approved"]),
+            "campaign": bool(row["label"] == 1),
+            "ring": out["ring"]["alerts_in_window"],
+        })
+
+    first = next((e for e in events if e["alert"] and e["campaign"]), None)
+    artifact = {
+        "meta": {
+            "generated_by": "koronis.cli replay",
+            "defense_only": "synthetic in-memory stream; no gateway, no real card data",
+            "threshold": round(thr, 6),
+            "velocity_threshold": round(float(vel_thr), 6),
+            "window_s": WINDOW_S,
+            "test_morphology": {"k": TEST_K, "camouflage": TEST_CAMO,
+                                "n_attempts": N_ATTEMPTS},
+            "n_events": len(events),
+            "n_campaign": int((test["label"] == 1).sum()),
+            "campaign_onset_t": 0.0,
+            "koronis_first_alert_t": None if first is None else first["t"],
+            "velocity_ever_alerts": any(e["vel_alert"] and e["campaign"] for e in events),
+            "cost_per_attempt_inr": COST_PER_ATTEMPT_INR,
+            "cost_per_false_block_inr": COST_PER_FALSE_BLOCK_INR,
+        },
+        "events": events,
+    }
+
+    RESULTS.mkdir(exist_ok=True)
+    path = RESULTS / "replay.json"
+    path.write_text(json.dumps(artifact, separators=(",", ":")))
+    m = artifact["meta"]
+    print(f"wrote {path}  ({path.stat().st_size/1024:.0f} KB, {m['n_events']} events)")
+    print(f"  koronis threshold {m['threshold']:.4f}, first campaign alert at "
+          f"t = {m['koronis_first_alert_t']}s")
+    print(f"  velocity ever alerts on the campaign: {m['velocity_ever_alerts']}")
+    return artifact
+
+
+def benchmark(n_warmup: int = 200) -> dict:
+    """Per-event inference latency, measured after warm-up.
+
+    Timing covers only StreamingKoronis.push - neighbour lookup plus two
+    message-passing steps. Dataset construction and model fitting are excluded,
+    since neither happens per event in a deployment.
+    """
+    test, kor, _, thr = _replay_setup()
+    rows = [row for _, row in test.iterrows()]
+
+    stream = StreamingKoronis(kor, threshold=thr, window_s=WINDOW_S)
+    for row in rows[:n_warmup]:
+        stream.push(row)
+
+    times = []
+    for row in rows[n_warmup:]:
+        t0 = time.perf_counter()
+        stream.push(row)
+        times.append((time.perf_counter() - t0) * 1000.0)
+
+    t = np.array(times)
+    out = {
+        "n_measured": int(t.size),
+        "n_warmup": n_warmup,
+        "p50_ms": round(float(np.percentile(t, 50)), 3),
+        "p95_ms": round(float(np.percentile(t, 95)), 3),
+        "p99_ms": round(float(np.percentile(t, 99)), 3),
+        "mean_ms": round(float(t.mean()), 3),
+        "throughput_eps": round(1000.0 / float(t.mean()), 1),
+    }
+    RESULTS.mkdir(exist_ok=True)
+    (RESULTS / "benchmark.json").write_text(json.dumps(out, indent=2))
+    print(f"\nper-event inference, {out['n_measured']} events after "
+          f"{n_warmup} warm-up")
+    print(f"  p50 {out['p50_ms']:.2f} ms   p95 {out['p95_ms']:.2f} ms   "
+          f"p99 {out['p99_ms']:.2f} ms")
+    print(f"  mean {out['mean_ms']:.2f} ms  ->  {out['throughput_eps']:.0f} events/sec")
+    return out
+
+
 if __name__ == "__main__":
     cmd = sys.argv[1] if len(sys.argv) > 1 else "ablation"
     {"ablation": ablation, "frontier": frontier, "latency": latency,
-     "seeds": seeds}[cmd]()
+     "seeds": seeds, "replay": replay, "benchmark": benchmark}[cmd]()

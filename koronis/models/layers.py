@@ -55,3 +55,34 @@ class RelationalLayer(nn.Module):
             out = out + att[r] * (agg / deg)
 
         return torch.relu(out)
+
+    def forward_single(self, x_self: torch.Tensor,
+                       neighbours: list[torch.Tensor]) -> torch.Tensor:
+        """Compute one destination node's output from its in-neighbours.
+
+        `x_self` is (in_dim,); `neighbours[r]` is (E_r, in_dim), the features of
+        the nodes with an edge into this one under relation r.
+
+        This is the streaming counterpart of `forward`, and it is arithmetically
+        identical for a single destination: `forward` accumulates per relation
+        with `index_add_`, which for one destination reduces to a plain sum over
+        that relation's in-edges. Keeping the two in step is what lets the
+        replay reproduce batch scores exactly rather than approximately, and a
+        parity test holds them to it.
+        """
+        if len(neighbours) != self.n_relations:
+            raise ValueError(
+                f"expected {self.n_relations} neighbour blocks, got {len(neighbours)}")
+
+        out = self.self_w(x_self)
+        att = torch.softmax(self.rel_att, dim=0)
+
+        for r, nb in enumerate(neighbours):
+            if nb is None or nb.numel() == 0:
+                continue
+            w = self.gate(torch.abs(nb - x_self.unsqueeze(0)))   # (E, 1)
+            msg = (self.rel_w[r](nb) * w).sum(dim=0)
+            deg = w.sum().clamp(min=1.0)
+            out = out + att[r] * (msg / deg)
+
+        return torch.relu(out)
