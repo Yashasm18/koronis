@@ -2,7 +2,7 @@
 
 **Detecting distributed card-testing campaigns that per-entity velocity rules cannot see — at any threshold.**
 
-[![tests](https://img.shields.io/badge/tests-45%20passing-2ea44f)](tests/)
+[![tests](https://img.shields.io/badge/tests-49%20passing-2ea44f)](tests/)
 [![python](https://img.shields.io/badge/python-3.11%2B-3776ab)](https://www.python.org/)
 [![graph libs](https://img.shields.io/badge/graph%20libraries-none-8a3ffc)](koronis/models/layers.py)
 [![track](https://img.shields.io/badge/Razorpay%20Buildathon-Track%2002%20·%20AI%20Risk%20Manager-0c2451)](https://razorpay.com/buildathon/)
@@ -124,10 +124,6 @@ an actionable operating point.
 and frozen. GBDT's transfers badly to the unseen morphology (precision falls to 0.823);
 Koronis's holds. An ECE of 0.0013 means its scores behave like probabilities, so a
 threshold means what its number implies.
-
-Calibration matters here too. An ECE of 0.0013 means Koronis's scores behave like
-probabilities, so a threshold means what its number implies; at 0.017 the GBDT's does not,
-and any cost calculation layered on top of it inherits that error.
 
 ### Detection latency
 
