@@ -1,6 +1,6 @@
 import pandas as pd
-from ringfence.data.background import load_background
-from ringfence.data.schema import EVENT_COLUMNS
+from koronis.data.background import load_background
+from koronis.data.schema import EVENT_COLUMNS
 
 
 def test_background_has_contract_columns_and_no_labels():

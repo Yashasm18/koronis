@@ -1,6 +1,6 @@
 import torch
 
-from ringfence.models.layers import RelationalLayer
+from koronis.models.layers import RelationalLayer
 
 
 def test_output_shape_and_gradients():

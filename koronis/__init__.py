@@ -1,4 +1,4 @@
-"""Ringfence — early detection of distributed card-testing campaigns."""
+"""Koronis — early detection of distributed card-testing campaigns."""
 
 import os
 

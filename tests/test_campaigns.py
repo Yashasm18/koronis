@@ -1,6 +1,6 @@
-from ringfence.data.background import load_background
-from ringfence.data.campaigns import inject
-from ringfence.data.schema import CampaignSpec, EVENT_COLUMNS
+from koronis.data.background import load_background
+from koronis.data.campaigns import inject
+from koronis.data.schema import CampaignSpec, EVENT_COLUMNS
 
 
 def _bg():

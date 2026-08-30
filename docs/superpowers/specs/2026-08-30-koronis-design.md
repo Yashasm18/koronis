@@ -1,4 +1,4 @@
-# Ringfence — Design Spec
+# Koronis — Design Spec
 
 **Razorpay AI Buildathon 2026 · Track 02: AI Risk Manager**
 Spec dated 2026-08-25 · Build starts 2026-08-29 · Deadline 2026-09-05 (7 build days)
@@ -79,7 +79,7 @@ consequence of Claim 1 — removing the strongest available objection to the res
 
 ### 3.2 Latency as the reported metric
 
-Published work reports precision/recall at end state. Ringfence reports
+Published work reports precision/recall at end state. Koronis reports
 **precision, recall, and rupees prevented as a function of detection latency** —
 how good is the model at hour 1, hour 3, hour 12 after attack onset?
 
@@ -186,7 +186,7 @@ measured when it is assumed.
 
 The brief: *"Strictly defense-only: anything offense-capable is disqualified."*
 
-Ringfence is a detector. The synthetic attack generator exists solely to produce
+Koronis is a detector. The synthetic attack generator exists solely to produce
 labeled training and test data — as it does in every fraud-ML paper — and is
 constrained accordingly:
 

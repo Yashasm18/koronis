@@ -1,9 +1,9 @@
 import numpy as np
 
-from ringfence.data.background import load_background
-from ringfence.data.campaigns import inject
-from ringfence.data.schema import CampaignSpec
-from ringfence.models.velocity import (
+from koronis.data.background import load_background
+from koronis.data.campaigns import inject
+from koronis.data.schema import CampaignSpec
+from koronis.models.velocity import (
     MultiEntityVelocityDetector, tune_velocity, false_positive_rate,
 )
 

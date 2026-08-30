@@ -1,11 +1,11 @@
 import numpy as np
 import torch
 
-from ringfence.data.background import load_background
-from ringfence.data.campaigns import inject
-from ringfence.data.schema import CampaignSpec
-from ringfence.models.loss import expected_cost_loss
-from ringfence.models.ringfence import RingfenceDetector, node_features
+from koronis.data.background import load_background
+from koronis.data.campaigns import inject
+from koronis.data.schema import CampaignSpec
+from koronis.models.loss import expected_cost_loss
+from koronis.models.koronis import KoronisDetector, node_features
 
 
 def _data(seed):
@@ -37,7 +37,7 @@ def test_node_features_shape_and_finiteness():
 
 def test_ranks_campaign_above_background():
     tr, te = _data(0), _data(1)
-    m = RingfenceDetector(seed=0)
+    m = KoronisDetector(seed=0)
     m.fit(tr, epochs=40)
     s = m.score_events(te)
     y = te["label"].to_numpy()
@@ -48,6 +48,6 @@ def test_scores_unseen_entities_inductively():
     """Test entities share no ids with train — a transductive model would fail."""
     tr, te = _data(0), _data(1)
     assert not set(tr["device_id"]) & set(te.query("label == 1")["device_id"])
-    m = RingfenceDetector(seed=0)
+    m = KoronisDetector(seed=0)
     m.fit(tr, epochs=20)
     assert np.isfinite(m.score_events(te)).all()

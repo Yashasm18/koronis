@@ -1,8 +1,8 @@
 import numpy as np
 
-from ringfence.data.background import load_background
-from ringfence.data.schema import RELATIONS
-from ringfence.graph.build import build_edges
+from koronis.data.background import load_background
+from koronis.data.schema import RELATIONS
+from koronis.graph.build import build_edges
 
 
 def test_edges_only_join_same_entity_within_window():

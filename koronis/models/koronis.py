@@ -43,7 +43,7 @@ class _Net(nn.Module):
         return self.head(x).squeeze(-1)
 
 
-class RingfenceDetector:
+class KoronisDetector:
     """Inductive graph detector for coordinated card-testing campaigns.
 
     Inductive by construction: there are no per-entity embedding tables, only
