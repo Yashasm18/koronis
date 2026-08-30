@@ -82,10 +82,23 @@ def _train_set(seed: int = 0) -> pd.DataFrame:
     return inject(bg, specs, seed=seed)
 
 
-def _normalise(s: np.ndarray) -> np.ndarray:
-    s = np.asarray(s, dtype=float)
-    hi = s.max()
-    return s / hi if hi > 0 else s
+# Detectors whose raw output is a calibrated probability in [0, 1]. Expected
+# calibration error is only meaningful for these; velocity counts and
+# co-occurrence sums are ordinal scores, not probabilities, so reporting an
+# ECE for them would be a category error.
+PROBABILISTIC = {"gbdt_per_txn", "koronis_graph"}
+
+
+def _raw(s: np.ndarray) -> np.ndarray:
+    """Detector scores, used exactly as produced.
+
+    Scores are deliberately NOT rescaled per split. Dividing calibration and
+    test each by their own maximum lets every split redefine what a score of
+    1.0 means, so a "frozen" threshold silently refers to a different absolute
+    quantity on each one. It is not label leakage, but it does hollow out the
+    claim that the operating point was fixed in advance.
+    """
+    return np.asarray(s, dtype=float)
 
 
 def _fit_all(train: pd.DataFrame, seed: int = 0):
@@ -128,11 +141,12 @@ def _run_once(seed: int = 0) -> pd.DataFrame:
     total = exposure(test, "camp_0")
     rows = []
     for name in scorers:
-        # Threshold is chosen on calibration and FROZEN before test is touched.
+        # Threshold is chosen on RAW calibration scores and FROZEN before test
+        # is touched, then applied unchanged to raw test scores.
         thr, _ = cost_optimal_threshold(
-            _normalise(score(name, calib)), y_cal,
+            _raw(score(name, calib)), y_cal,
             COST_PER_ATTEMPT_INR, COST_PER_FALSE_BLOCK_INR)
-        s = _normalise(score(name, test))
+        s = _raw(score(name, test))
         fired = s >= thr
         dt = detection_times(test, s, thr)["camp_0"]
         rows.append({
@@ -149,7 +163,8 @@ def _run_once(seed: int = 0) -> pd.DataFrame:
             "fp_cost_inr": round(float((fired & (y == 0)).sum() * COST_PER_FALSE_BLOCK_INR), 2),
             "inr_prevented": round(money_prevented(test, dt, "camp_0"), 2),
             "inr_exposure": round(total, 2),
-            "ece": round(expected_calibration_error(s, y), 4),
+            "ece": (round(expected_calibration_error(s, y), 4)
+                    if name in PROBABILISTIC else None),
         })
 
     df = pd.DataFrame(rows)
@@ -171,34 +186,62 @@ def ablation() -> pd.DataFrame:
     return df
 
 
-def seeds(n_seeds: int = 5) -> pd.DataFrame:
-    """Repeat the whole protocol across seeds and report intervals.
+def seeds(n_seeds: int = 10) -> pd.DataFrame:
+    """Repeat the whole protocol across independent trials and report intervals.
 
-    A single run cannot separate a real effect from a lucky draw. Each seed
-    resamples background traffic, campaign entities and model initialisation.
+    Each trial redraws the background traffic, the campaign entities, the
+    calibration stream and the model initialisation. The held-out morphology is
+    preserved throughout: train and calibration stay at k <= 30, test at k = 60
+    with full camouflage, so every trial asks the same extrapolation question
+    of a differently-sampled world.
+
+    Intervals are reported as median with 2.5th/97.5th percentiles rather than
+    mean +/- 1.96*sd, because several of these metrics are visibly skewed - a
+    detector that collapses on some draws has a long left tail that a normal
+    approximation misrepresents.
     """
     runs = [_run_once(s) for s in range(n_seeds)]
     allr = pd.concat(runs, ignore_index=True)
+
+    # False-positive reduction against the GBDT baseline, per trial.
+    ref = (allr[allr["detector"] == "gbdt_per_txn"]
+           .set_index("seed")["false_positives"])
+    allr["fp_reduction_vs_gbdt"] = allr.apply(
+        lambda r: (ref[r["seed"]] / r["false_positives"]
+                   if r["false_positives"] > 0 else np.nan), axis=1).round(3)
+
     RESULTS.mkdir(exist_ok=True)
     allr.to_csv(RESULTS / "seeds_raw.csv", index=False)
 
-    metrics = ["precision", "recall", "pr_auc", "false_positives", "ece"]
-    g = allr.groupby("detector", sort=False)[metrics]
-    summary = g.agg(["mean", "std", "min", "max"]).round(4)
-    # 95% CI on the mean, normal approximation over n_seeds runs
-    ci = (1.96 * g.std() / np.sqrt(n_seeds)).round(4)
-    ci.columns = [c + "_ci95" for c in ci.columns]
-    out = pd.concat([g.mean().round(4), ci], axis=1).reset_index()
-    out.insert(1, "n_seeds", n_seeds)
+    metrics = ["pr_auc", "precision", "recall", "false_positives",
+               "detect_s", "fp_reduction_vs_gbdt"]
+    rows = []
+    for name, g in allr.groupby("detector", sort=False):
+        row = {"detector": name, "n_trials": n_seeds}
+        for m in metrics:
+            v = pd.to_numeric(g[m], errors="coerce").dropna()
+            if v.empty:
+                row[f"{m}_median"] = row[f"{m}_lo95"] = row[f"{m}_hi95"] = np.nan
+                continue
+            row[f"{m}_median"] = round(float(v.median()), 4)
+            row[f"{m}_lo95"] = round(float(v.quantile(0.025)), 4)
+            row[f"{m}_hi95"] = round(float(v.quantile(0.975)), 4)
+        # how often the detector found the campaign at all
+        row["detected_rate"] = round(float(g["detect_s"].notna().mean()), 3)
+        rows.append(row)
+
+    out = pd.DataFrame(rows)
     out.to_csv(RESULTS / "seeds_summary.csv", index=False)
 
-    print(f"\n{n_seeds} seeds, full protocol repeated each time\n")
-    print(summary.to_string())
-    print("\nmean +/- 95% CI\n")
+    print(f"\n{n_seeds} independent trials; median [2.5th, 97.5th percentile]\n")
     for _, r in out.iterrows():
-        print(f"  {r['detector']:>15}  precision {r['precision']:.3f} +/- {r['precision_ci95']:.3f}"
-              f"   recall {r['recall']:.3f} +/- {r['recall_ci95']:.3f}"
-              f"   FPs {r['false_positives']:.1f} +/- {r['false_positives_ci95']:.1f}")
+        print(f"  {r['detector']:>15}"
+              f"  PR-AUC {r['pr_auc_median']:.3f} [{r['pr_auc_lo95']:.3f}, {r['pr_auc_hi95']:.3f}]"
+              f"  P {r['precision_median']:.3f} [{r['precision_lo95']:.3f}, {r['precision_hi95']:.3f}]"
+              f"  R {r['recall_median']:.3f}"
+              f"  FP {r['false_positives_median']:.0f} [{r['false_positives_lo95']:.0f}, {r['false_positives_hi95']:.0f}]"
+              f"  detect {r['detected_rate']:.0%}")
+    print("\nper-trial values: results/seeds_raw.csv")
     return out
 
 
@@ -217,18 +260,32 @@ def frontier() -> pd.DataFrame:
 
 def latency() -> pd.DataFrame:
     train = _train_set(0)
+    calib = _train_set(2)
     test = _dataset(1, TEST_K, TEST_CAMO)
     taus, gbdt, kor = _fit_all(train)
+    y_cal = calib["label"].to_numpy()
     checkpoints = [60, 300, 600, 1200, 1800, 2400, 3000, 3600]
 
+    scorers = {
+        "velocity_tuned": MultiEntityVelocityDetector(taus, WINDOW_S).score_events,
+        "decline_burst": DeclineBurstDetector().score_events,
+        "shared_entity": SharedEntityDetector(window_s=WINDOW_S).score_events,
+        "gbdt_per_txn": gbdt.score_events,
+        "koronis_graph": kor.score_events,
+    }
+
     frames = []
-    for name, raw in {
-        "velocity_tuned": MultiEntityVelocityDetector(taus, WINDOW_S).score_events(test),
-        "gbdt_per_txn": gbdt.score_events(test),
-        "koronis_graph": kor.score_events(test),
-    }.items():
-        c = latency_curve(test, _normalise(raw), "camp_0", checkpoints)
+    for name, fn in scorers.items():
+        # One threshold per detector, derived from calibration, held fixed at
+        # every checkpoint. This measures one deployed detector over time,
+        # rather than a sequence of differently tuned ones.
+        thr, _ = cost_optimal_threshold(_raw(fn(calib)), y_cal,
+                                        COST_PER_ATTEMPT_INR,
+                                        COST_PER_FALSE_BLOCK_INR)
+        c = latency_curve(test, _raw(fn(test)), "camp_0", checkpoints,
+                          threshold=thr)
         c.insert(0, "detector", name)
+        c.insert(1, "threshold", round(thr, 6))
         frames.append(c)
 
     df = pd.concat(frames, ignore_index=True)

@@ -52,12 +52,14 @@ def money_prevented(events: pd.DataFrame, detect_s: float | None,
 
 
 def latency_curve(events: pd.DataFrame, scores: np.ndarray,
-                  campaign_id: str, checkpoints_s: list[float]) -> pd.DataFrame:
+                  campaign_id: str, checkpoints_s: list[float],
+                  threshold: float) -> pd.DataFrame:
     """Precision, recall and rupees prevented as a function of elapsed time.
 
-    This is the project's headline artifact. Each row answers: if you only
-    looked at the stream up to `t` seconds after onset, how good would the
-    detector be, and how much money would still be on the table?
+    `threshold` must be derived once, from calibration data, and passed in
+    frozen. Recomputing an operating point at each checkpoint would not measure
+    one deployed detector over time - it would measure a sequence of
+    differently tuned detectors, which is a different and much easier question.
     """
     ts = events["ts"].to_numpy()
     y = (events["label"].to_numpy() == 1)
@@ -71,8 +73,7 @@ def latency_curve(events: pd.DataFrame, scores: np.ndarray,
         if not seen.any():
             continue
         # A campaign is "caught by t" if any of its attempts seen so far fired.
-        thr = _threshold_for(scores[seen], y[seen])
-        fired = seen & (scores >= thr)
+        fired = seen & (scores >= threshold)
         tp = int((fired & y).sum())
         fp = int((fired & ~y).sum())
         fn = int((seen & y & ~fired).sum())
@@ -88,10 +89,16 @@ def latency_curve(events: pd.DataFrame, scores: np.ndarray,
     return pd.DataFrame(rows)
 
 
-def _threshold_for(scores: np.ndarray, labels: np.ndarray) -> float:
-    """Operating point held fixed across checkpoints: the 99th percentile of
-    the score distribution. Using a per-checkpoint optimum would let the
-    threshold peek at labels it should not have yet."""
-    if scores.size == 0:
+def alert_volume_threshold(calibration_scores: np.ndarray,
+                           quantile: float = 0.99) -> float:
+    """An equal-alert-volume operating point, derived from CALIBRATION only.
+
+    Useful for comparing detectors at matched alert budgets rather than at
+    each one's own cost optimum. It must be computed once, on calibration
+    data, and then frozen - deriving it from the test stream would let the
+    operating point drift with whatever the detector happens to see.
+    """
+    calibration_scores = np.asarray(calibration_scores, dtype=float)
+    if calibration_scores.size == 0:
         return float("inf")
-    return float(np.quantile(scores, 0.99))
+    return float(np.quantile(calibration_scores, quantile))

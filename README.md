@@ -101,56 +101,69 @@ catches them (`k ≤ 30`, below the boundary of ~44). The test campaign is sprea
 that boundary, fully camouflaged, with entirely unseen entities — so the hold-out is
 **extrapolation**, not interpolation.
 
-**The whole protocol is repeated across 5 seeds** — each resampling background traffic,
-campaign entities and model initialisation. A single run cannot separate a real effect
-from a lucky draw, so the headline is an interval, not a point.
+**The whole protocol is repeated across 10 independent trials** — each redrawing the
+background traffic, the campaign entities, the calibration stream and the model
+initialisation, while holding the held-out morphology fixed. Intervals are median with
+2.5th/97.5th percentiles, because several of these metrics are visibly skewed and a normal
+approximation would misrepresent the tails.
 
-| detector | **precision** (mean ± 95% CI) | min–max | **recall** | PR-AUC | false positives | ECE |
-|---|---:|---:|---:|---:|---:|---:|
-| `velocity_tuned` | 0.000 ± 0.000 | 0.000–0.000 | 0.000 | 0.063 | 39 ± 16 | 0.065 |
-| `decline_burst` *(no graph, no learning)* | 0.725 ± 0.028 | 0.693–0.762 | 0.988 | 0.544 | 151 ± 21 | 0.073 |
-| `shared_entity` *(graph, no learning)* | 0.163 ± 0.013 | 0.141–0.181 | 0.926 | 0.894 | 1,920 ± 190 | 0.081 |
-| `gbdt_per_txn` | 0.592 ± **0.294** | **0.000–0.823** | 0.610 | 0.673 ± 0.316 | 99 ± 38 | 0.033 |
-| **`koronis_graph`** | **0.945 ± 0.016** | **0.919–0.963** | **0.987** | **0.997 ± 0.001** | **23 ± 7** | **0.0025** |
+Scores are used **raw**. Rescaling each split by its own maximum would let every split
+redefine what a score means, hollowing out the claim that the threshold was frozen.
 
-Campaign exposure if never stopped: ₹29,200. Reproduce with
-`python -m koronis.cli seeds`; per-run values are in `results/seeds_raw.csv`.
+| detector | PR-AUC | precision | recall | false positives | **detected** |
+|---|---:|---:|---:|---:|---:|
+| `velocity_tuned` | 0.062 `[0.062, 0.062]` | 0.000 | 0.000 | 35 `[17, 71]` | **0 / 10** |
+| `decline_burst` *(no graph, no learning)* | 0.536 `[0.518, 0.568]` | 0.718 | 0.993 | 156 `[124, 181]` | 10 / 10 |
+| `shared_entity` *(graph, no learning)* | 0.894 `[0.888, 0.904]` | 0.873 | 0.856 | 50 `[35, 84]` | 10 / 10 |
+| `gbdt_per_txn` | 0.674 `[0.079, 0.913]` | 0.639 `[0.000, 0.850]` | 0.639 | 76 `[47, 215]` | **6 / 10** |
+| **`koronis_graph`** | **0.996** `[0.992, 0.999]` | **0.958** `[0.887, 0.968]` | **0.980** | **18** `[13, 50]` | **10 / 10** |
 
-**Three things this table says, none of them the obvious one.**
+Campaign exposure if never stopped: ₹29,200. Per-trial values in `results/seeds_raw.csv`.
+Reproduce with `python -m koronis.cli seeds`.
 
-*The per-transaction model is not weaker — it is unreliable.* Across seeds its precision
-ranges from **0.823 down to 0.000**: on some draws it fails completely. Its 95% interval is
-±0.294 against Koronis's ±0.016. A single run would have hidden this entirely, and the
-first seed we reported happened to be GBDT's best case. The defensible claim is not "our
-model scores higher" but **"ours holds; theirs is a coin flip on the morphology it meets."**
+**What this table actually says.**
 
-*The graph signal is real without any learning — and unusable on its own.* Plain
-inverse-frequency co-occurrence counting (`shared_entity`) reaches PR-AUC **0.894 ± 0.007**,
-so the structure genuinely carries the signal, consistently. But at an operating threshold
-it fires **1,920** false positives. The network is not decorative: it does not *find* the
-signal — the counting does that — it makes the signal **usable**.
+*Threshold rules do not degrade — they stop working.* Velocity precision is 0.000 on all
+ten trials and it never once detects the campaign. That is not an empirical tendency, it is
+Claim 1: at `k = 60` against `τ = 9`, no threshold can fire.
 
-*Calibration is doing real work.* Every threshold is chosen on the calibration split and
-frozen before test is touched. GBDT's transfers unpredictably to an unseen morphology;
-Koronis's holds. An ECE of 0.0025 means its scores behave like probabilities, so a
-threshold means what its number implies — which is the precondition for any cost
-calculation layered on top.
+*The per-transaction model is not weaker so much as unreliable.* Its PR-AUC interval spans
+`[0.079, 0.913]` and it detects the campaign in only **6 of 10 trials**. On the other four
+it fails completely. A single-seed report would have hidden this entirely — and the first
+seed we reported happened to be its best case.
+
+*Simple graph counting is a strong baseline, and the network's job is narrower than it
+first appears.* Plain inverse-frequency co-occurrence (`shared_entity`, no learning at all)
+reaches PR-AUC **0.894** and detects every time. Koronis does not beat it by finding
+coordination the counting misses. It beats it by making that signal **operational**:
+**2.8× fewer false positives** (18 vs 50), higher recall (0.980 vs 0.856), and — see below —
+detection **ten times sooner**.
+
+That is the honest claim, and it is a stronger one than "we built a GNN and it scored
+0.996". The structure carries the signal; the network makes it something you could
+actually deploy.
 
 ### Detection latency
 
 Precision and recall if you had only seen the stream up to `t` seconds after onset:
 
+Each detector uses **one threshold, derived from calibration and held fixed at every
+checkpoint** — so this measures a single deployed detector over time, not a sequence of
+differently tuned ones.
+
 | detector | t=60s | t=300s | t=600s |
 |---|---|---|---|
 | `velocity_tuned` | — not detected — | — not detected — | — not detected — |
-| `gbdt_per_txn` | P 0.50 / R 0.30 | P 0.83 / R 0.13 | P 1.00 / R 0.08 |
-| **`koronis_graph`** | **P 0.83 / R 0.50** | **P 1.00 / R 0.16** | P 1.00 / R 0.08 |
+| `shared_entity` | — not detected — | — not detected — | P 0.86 / R 0.27 |
+| `decline_burst` | P 0.37 / R 0.70 | P 0.74 / R 0.92 | P 0.84 / R 0.96 |
+| `gbdt_per_txn` | P 0.43 / R 0.30 | P 0.76 / R 0.34 | P 0.92 / R 0.65 |
+| **`koronis_graph`** | **P 0.83 / R 0.50** | **P 0.97 / R 0.82** | **P 0.98 / R 0.89** |
 
-At one minute Koronis is already precise enough to act on. That is the whole point:
-**when you detect determines how much you save.**
-
-*(Latency figures use a fixed 99th-percentile operating point rather than the frozen
-calibration threshold, so they are comparable across detectors at equal alert volume.)*
+This is where the difference between *finding* the signal and *operationalising* it becomes
+concrete. Raw co-occurrence counting does find the campaign — but not until **600 seconds**,
+because it needs that long to accumulate enough shared-entity mass to cross its threshold.
+Koronis is already at 0.83 precision at **60 seconds**, a **10× latency difference** on the
+same underlying structure. When you detect determines how much you save.
 
 ## How it works
 
@@ -311,8 +324,20 @@ sampling, and the multinomial maximum reached 18 attempts where the mean was 8 �
 a threshold of 9 for reasons unrelated to the hypothesis under test. With uniform spread
 across every entity, agreement went to **100%**.
 
+**5 · A rescaling that quietly changed a published conclusion.** Calibration and test
+scores were each divided by their own maximum before thresholding. No test labels were
+touched, so it was not leakage in the usual sense — but it let each split redefine what a
+score of `1.0` meant, so a "frozen" threshold referred to a different absolute quantity on
+each one. It hurt the learning-free co-occurrence baseline worst, and this README
+previously reported that baseline as firing 2,246 false positives and being "unusable
+without learning". On raw scores it fires **50** and is a genuinely strong detector. The
+conclusion drawn from the bug was wrong, and it was wrong in the direction that flattered
+this project.
+
 The general lesson from (1) and (4): *a property you assert in a test gets checked; a
 property you merely intend gets silently violated the moment an unrelated helper changes.*
+From (5): *a preprocessing step that seems neutral can decide your conclusion, and the
+dangerous ones are those whose bias points your way.*
 
 ---
 

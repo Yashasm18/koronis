@@ -52,9 +52,23 @@ def sweep(n_values: list[int], k_values: list[int], fp_budget: float,
     model = KoronisDetector(seed=seed, window_s=window_s)
     model.fit(train, epochs=60)
 
-    # Operating threshold frozen on the training stream, never on a test cell.
-    tr_scores = model.score_events(train)
-    thr = float(np.quantile(tr_scores, 1.0 - train["label"].mean()))
+    # Operating threshold comes from a THIRD stream - same distribution as
+    # training, different draw - not from the training stream itself. A model
+    # scores its own training data optimistically, so a quantile taken there
+    # sits in the wrong place. Same three-split protocol as the ablation.
+    calib_bg = load_background(path=None, n_rows=n_background, seed=seed + 200)
+    calib_specs = [
+        CampaignSpec(n_attempts=400, k_devices=k, k_ips=k, n_bins=k,
+                     duration_s=window_s,
+                     start_ts=float(calib_bg["ts"].min()
+                                    + (calib_bg["ts"].max() - calib_bg["ts"].min())
+                                    * (0.1 + 0.25 * i)),
+                     camouflage=c)
+        for i, (k, c) in enumerate([(4, 0.0), (12, 0.5), (30, 1.0)])
+    ]
+    calib = inject(calib_bg, calib_specs, seed=seed + 200)
+    cal_scores = model.score_events(calib)
+    thr = float(np.quantile(cal_scores, 1.0 - calib["label"].mean()))
     # The binding constraint is the most permissive counter: the campaign is
     # blind to the engine only once it clears every one of them.
     tau_max = max(taus[e] for e in VELOCITY_ENTITIES)

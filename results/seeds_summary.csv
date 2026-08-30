@@ -1,6 +1,6 @@
-detector,n_seeds,precision,recall,pr_auc,false_positives,ece,precision_ci95,recall_ci95,pr_auc_ci95,false_positives_ci95,ece_ci95
-velocity_tuned,5,0.0,0.0,0.0625,39.2,0.0653,0.0,0.0,0.0,16.0361,0.0013
-decline_burst,5,0.7247,0.988,0.544,151.0,0.073,0.0278,0.0072,0.0189,21.291,0.0021
-shared_entity,5,0.1628,0.926,0.8936,1920.2,0.0805,0.013,0.0074,0.0062,189.8262,0.0012
-gbdt_per_txn,5,0.5921,0.6095,0.6731,98.8,0.0328,0.2936,0.3419,0.2771,37.8153,0.022
-koronis_graph,5,0.9453,0.9865,0.9971,23.0,0.0025,0.0161,0.0065,0.001,7.2546,0.001
+detector,n_trials,pr_auc_median,pr_auc_lo95,pr_auc_hi95,precision_median,precision_lo95,precision_hi95,recall_median,recall_lo95,recall_hi95,false_positives_median,false_positives_lo95,false_positives_hi95,detect_s_median,detect_s_lo95,detect_s_hi95,fp_reduction_vs_gbdt_median,fp_reduction_vs_gbdt_lo95,fp_reduction_vs_gbdt_hi95,detected_rate
+velocity_tuned,10,0.0625,0.0625,0.0625,0.0,0.0,0.0,0.0,0.0,0.0,35.0,16.7,71.0,,,,1.9695,1.1351,5.0694,0.0
+decline_burst,10,0.5359,0.5177,0.5675,0.7181,0.6864,0.7602,0.9925,0.975,0.995,155.5,123.575,181.425,32.15,7.455,74.5975,0.4795,0.2672,1.4424,1.0
+shared_entity,10,0.894,0.8883,0.9037,0.8733,0.8025,0.9055,0.8562,0.8397,0.8725,49.5,35.25,84.3,354.5,263.5875,505.5375,1.2505,0.7378,4.5696,1.0
+gbdt_per_txn,10,0.6744,0.0786,0.9127,0.6393,0.0,0.8495,0.6387,0.0,0.9278,75.5,46.925,215.125,0.0,0.0,8.5625,1.0,1.0,1.0,0.6
+koronis_graph,10,0.9962,0.9919,0.9987,0.9575,0.8873,0.968,0.98,0.9731,0.9939,17.5,13.0,49.725,5.45,0.0,41.8425,4.467,1.3996,15.7931,1.0
