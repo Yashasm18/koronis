@@ -8,6 +8,7 @@
     python -m koronis.cli benchmark   # p50/p95 per-event inference latency
     python -m koronis.cli mechanism   # which mechanism actually carries the signal
     python -m koronis.cli incidents   # consolidate alerts -> incidents -> actions
+    python -m koronis.cli drift       # traffic-profile transfer stress test
 """
 import json
 import sys
@@ -28,8 +29,10 @@ from .models.gbdt import GBDTDetector
 from .models.heuristic import DeclineBurstDetector, SharedEntityDetector
 from .models.koronis import KoronisDetector
 from .models.velocity import MultiEntityVelocityDetector, tune_velocity
+from .drift import DriftMonitor
 from .forecast import ExposureForecaster, build_snapshots, evaluate_forecast
-from .incident import IncidentRisk, build_incidents
+from .profiles import BASE, SHIFTED
+from .incident import ACTION_BY_NAME, IncidentRisk, build_incidents
 from .eval.policy import evaluate_policies, incident_reliability
 from .stream import StreamingKoronis
 
@@ -465,6 +468,113 @@ def incidents() -> pd.DataFrame:
     return summary
 
 
+def _profile_stream(seed: int, profile, k: int, camo: float,
+                    n_attempts: int) -> pd.DataFrame:
+    bg = load_background(path=None, n_rows=N_BACKGROUND, seed=seed, profile=profile)
+    spec = CampaignSpec(n_attempts=n_attempts, k_devices=k, k_ips=k, n_bins=k,
+                        duration_s=WINDOW_S, start_ts=float(bg["ts"].iloc[500]),
+                        camouflage=camo)
+    return inject(bg, [spec], seed=seed)
+
+
+def drift() -> pd.DataFrame:
+    """Traffic-profile transfer stress test with an automation guardrail.
+
+    These are synthetic merchant SHAPES, not real merchants. Surviving this is
+    evidence the detector is not tuned to one profile; it is not evidence of
+    production cross-merchant transfer.
+
+    Everything is fitted on the base profile and frozen before any shifted
+    traffic is scored: detector weights, the alert threshold, the incident risk
+    model, the exposure forecaster, and the drift cut-off. The three shifted
+    profiles were defined in koronis/profiles.py before being run.
+    """
+    train = _train_set(0)
+    taus, gbdt, kor = _fit_all(train)
+
+    base_calibs = [_calibration_set(2)] + [
+        _sized_stream(500 + j * 7, max(TRAIN_KS), 1.0, j)
+        for j in range(N_POLICY_STREAMS)]
+    thr, _ = cost_optimal_threshold(_raw(kor.score_events(base_calibs[0])),
+                                    base_calibs[0]["label"].to_numpy(),
+                                    COST_PER_ATTEMPT_INR, COST_PER_FALSE_BLOCK_INR)
+
+    cal_inc, cal_snaps = [], []
+    for j, f in enumerate(base_calibs[1:]):
+        sc = _raw(kor.score_events(f))
+        inc = build_incidents(f, sc, thr)
+        cal_inc.extend(inc)
+        cal_snaps.append(build_snapshots(f, inc, sc, stream_id=j))
+    risk = IncidentRisk().fit(cal_inc)
+    fc = ExposureForecaster(seed=0).fit(pd.concat(cal_snaps, ignore_index=True))
+
+    # Drift cut-off from base calibration traffic ONLY.
+    monitor = DriftMonitor(quantile=0.95, seed=0).fit(base_calibs)
+
+    rows = []
+    for prof in [BASE, *SHIFTED]:
+        for j in range(3):
+            ev = _profile_stream(1200 + j * 13, prof, TEST_K, TEST_CAMO,
+                                 CAMPAIGN_SIZES[j])
+            sc = _raw(kor.score_events(ev))
+            chk = monitor.check(ev)
+            summary, detail = evaluate_policies(ev, sc, thr, risk, fc)
+
+            # Raw behaviour, then guarded: under drift the policy stands down
+            # from automated intervention to analyst review.
+            raw_actions = [d["action"] for d in detail]
+            guarded = ["review_only" if (chk["drifted"] and a != "monitor") else a
+                       for a in raw_actions]
+            auto_raw = sum(1 for a in raw_actions if a != "monitor")
+            false_auto = sum(1 for a, d in zip(raw_actions, detail)
+                             if a != "monitor" and not d["genuine"])
+            true_downgraded = sum(1 for a, g, d in zip(raw_actions, guarded, detail)
+                                  if a != g and d["genuine"])
+            added_minutes = sum(
+                ACTION_BY_NAME[g].analyst_minutes - ACTION_BY_NAME[a].analyst_minutes
+                for a, g in zip(raw_actions, guarded))
+            rows.append({
+                "profile": prof.name, "stream": j,
+                "psi": chk["psi"], "psi_threshold": chk["threshold"],
+                "drifted": chk["drifted"], "largest_shift": chk["largest_shift"],
+                "incidents": len(detail),
+                "auto_actions_raw": auto_raw,
+                "false_auto_actions_raw": false_auto,
+                "false_escalations_avoided": false_auto if chk["drifted"] else 0,
+                "true_responses_downgraded": true_downgraded,
+                "analyst_minutes_added": round(added_minutes, 1),
+            })
+
+    df = pd.DataFrame(rows)
+    per = (df.groupby("profile", sort=False)
+           .agg(psi=("psi", "median"), drifted=("drifted", "mean"),
+                incidents=("incidents", "median"),
+                auto_raw=("auto_actions_raw", "median"),
+                false_auto_raw=("false_auto_actions_raw", "sum"),
+                false_avoided=("false_escalations_avoided", "sum"),
+                true_downgraded=("true_responses_downgraded", "sum"),
+                minutes_added=("analyst_minutes_added", "sum"))
+           .round(3).reset_index())
+
+    RESULTS.mkdir(exist_ok=True)
+    df.to_csv(RESULTS / "drift_raw.csv", index=False)
+    per.to_csv(RESULTS / "drift.csv", index=False)
+    json.dump({"threshold_psi": monitor.threshold,
+               "null_scores": [round(x, 4) for x in monitor.null_scores],
+               "profiles": {p.name: p.blurb for p in [BASE, *SHIFTED]},
+               "per_profile": per.to_dict("records"),
+               "streams": df.to_dict("records")},
+              open(RESULTS / "drift.json", "w"), separators=(",", ":"))
+
+    print(f"\ndrift cut-off (95th pct of base-vs-base PSI): {monitor.threshold:.4f}\n")
+    print(per.to_string(index=False))
+    print("\nper stream:")
+    print(df[["profile", "stream", "psi", "drifted", "largest_shift",
+              "incidents", "auto_actions_raw", "false_auto_actions_raw"]]
+          .to_string(index=False))
+    return per
+
+
 def frontier() -> pd.DataFrame:
     from .eval.frontier import sweep
     df = sweep(n_values=[200, 400, 800, 1600], k_values=[2, 10, 50, 200],
@@ -698,4 +808,4 @@ if __name__ == "__main__":
     cmd = sys.argv[1] if len(sys.argv) > 1 else "ablation"
     {"ablation": ablation, "frontier": frontier, "latency": latency,
      "seeds": seeds, "replay": replay, "benchmark": benchmark,
-     "mechanism": mechanism, "incidents": incidents}[cmd]()
+     "mechanism": mechanism, "incidents": incidents, "drift": drift}[cmd]()

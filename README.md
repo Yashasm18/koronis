@@ -2,7 +2,7 @@
 
 **Detecting distributed card-testing campaigns that per-entity velocity rules cannot see — at any threshold.**
 
-[![tests](https://img.shields.io/badge/tests-79%20passing-2ea44f)](tests/)
+[![tests](https://img.shields.io/badge/tests-89%20passing-2ea44f)](tests/)
 [![python](https://img.shields.io/badge/python-3.11%2B-3776ab)](https://www.python.org/)
 [![graph libs](https://img.shields.io/badge/graph%20libraries-none-8a3ffc)](koronis/models/layers.py)
 [![track](https://img.shields.io/badge/Razorpay%20Buildathon-Track%2002%20·%20AI%20Risk%20Manager-0c2451)](https://razorpay.com/buildathon/)
@@ -343,6 +343,73 @@ two bins — and slightly over-confident. Reported rather than smoothed over.
 A single calibration stream yields only two incidents, which cannot determine an eight-feature
 model at all; a test records that failure so the pooling requirement cannot be quietly dropped.
 
+## Traffic-profile transfer stress test
+
+**These are synthetic merchant shapes, not real merchants.** Surviving this is evidence the
+detector is not tuned to one traffic profile. It is *not* evidence of production
+cross-merchant transfer, and nothing here should be read as such.
+
+Everything is fitted on the **base** profile and frozen before any shifted traffic is
+scored: detector weights, the alert threshold, the incident risk model, the exposure
+forecaster, and the drift cut-off. The three shifted profiles are declared in
+[`koronis/profiles.py`](koronis/profiles.py) — defined before being run, because choosing a
+shift after seeing which one the model survives turns a stress test into a demonstration.
+
+| profile | what it breaks |
+|---|---|
+| `subscription` | legitimate device and card reuse is **high** — dense co-occurrence is normal |
+| `marketplace` | entities are **diffuse** — the graph is sparse and thresholds sit wrong |
+| `flash_sale` | a **legitimate burst** — high volume and elevated declines, no attack |
+
+### Does it notice?
+
+Drift is measured by **Population Stability Index**, the standard statistic in payments
+risk, so a reviewer can read it and its per-feature contributions say *which* aspect moved.
+The cut-off is the 95th percentile of PSI between disjoint **base** samples — how much base
+traffic varies against itself — so nothing about the shifted profiles informs it.
+
+| profile | median PSI | flagged | largest shift | what actually changed |
+|---|---:|---:|---|---|
+| base | 0.148 | 1 / 3 | reuse_bin | — |
+| `subscription` | **0.592** | 3 / 3 | **reuse_device** | ✓ device reuse |
+| `marketplace` | **0.931** | 3 / 3 | **reuse_ip** | ✓ entity diffusion |
+| `flash_sale` | **0.404** | 3 / 3 | **log_interarrival** | ✓ the burst |
+
+Cut-off: **0.154**. Every shifted profile is flagged, and in each case the feature it names
+is one the profile genuinely alters — it reports *how* the traffic differs, not merely that
+it does.
+
+### The guardrail, and what it costs
+
+When PSI exceeds the cut-off, the policy **stands down from automated intervention to
+analyst review**. `review_only` stops nothing on its own — that is the honest price of not
+trusting yourself — and it is deliberately excluded from the cost-minimising choice, since
+in an argmin it would be selected whenever doing nothing while billing an analyst looked
+cheap. A test asserts it is unreachable that way.
+
+| profile | false automated actions avoided | true responses downgraded | analyst minutes added |
+|---|---:|---:|---:|
+| `subscription` | 1 | 3 | 12 |
+| `marketplace` | **5** | 9 | 72 |
+| `flash_sale` | 2 | 7 | 36 |
+
+**This is a trade, not a free win.** Across the shifted profiles the guardrail prevents 8
+false automated interventions and downgrades 19 genuine responses to review-only, adding 120
+analyst minutes. Whether that is worth it depends on the merchant's tolerance for wrongly
+throttling real customers, which is exactly the judgement a person should make.
+
+### Two honest caveats
+
+**Base traffic tripped the alarm once in three streams** (PSI 0.169 against a 0.154
+cut-off — marginal). With three streams that rate is not well estimated, and a false drift
+alarm is not free: it downgraded 7 genuine responses for nothing.
+
+**The drift signal partly detects the attack, not only the merchant.** A campaign of several
+hundred events with distinctive reuse shifts the very statistics being monitored. The
+threshold is fitted on base streams that *also* contain campaigns, which controls for this
+in part, but the confound is inherent — live, you cannot separate "different merchant" from
+"under attack" before deciding. Reported rather than engineered around.
+
 ## Which mechanism carries the signal
 
 The full model alerting on the opening attempt demanded an explanation rather than a
@@ -510,6 +577,7 @@ python -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/python -m koronis.cli benchmark     # p50/p95 per-event inference latency
 .venv/bin/python -m koronis.cli mechanism     # which mechanism carries the signal
 .venv/bin/python -m koronis.cli incidents     # alerts -> incidents -> forecast -> action
+.venv/bin/python -m koronis.cli drift         # traffic-profile transfer stress test
 ```
 
 Results are written to `results/*.csv`. Every number in this README comes from those files.

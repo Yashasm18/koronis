@@ -1,0 +1,5 @@
+profile,psi,drifted,incidents,auto_raw,false_auto_raw,false_avoided,true_downgraded,minutes_added
+base,0.148,0.333,4.0,1.0,0,0,7,24.0
+subscription,0.592,1.0,2.0,1.0,1,1,3,12.0
+marketplace,0.931,1.0,10.0,3.0,5,5,9,72.0
+flash_sale,0.404,1.0,1.0,1.0,2,2,7,36.0

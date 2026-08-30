@@ -43,6 +43,12 @@ ACTIONS = [
            "step-up verification on matching attempts"),
     Action("hold_review", 900.0, 6000.0, 0.97, 12.0,
            "hold matching attempts and queue for analyst review"),
+    # The guardrail action. A human looks; nothing is blocked automatically.
+    # It stops no abuse on its own, which is the honest cost of standing down:
+    # when the traffic no longer resembles what the thresholds were fitted on,
+    # a confident automated action is worth less than a person's judgement.
+    Action("review_only", 0.0, 0.0, 0.0, 12.0,
+           "route to analyst review; no automated action"),
 ]
 ACTION_BY_NAME = {a.name: a for a in ACTIONS}
 
@@ -205,12 +211,20 @@ def expected_cost(action: Action, risk: float, remaining_attempts: int) -> float
             + (1.0 - risk) * action.false_harm_inr)
 
 
+# Actions the policy may select on its own. `review_only` is reachable only via
+# the drift guardrail: it is a decision to stop automating, not an option to be
+# weighed on expected cost, and including it in the argmin would let the policy
+# pick "do nothing but bill an analyst" whenever that looked cheap.
+AUTONOMOUS_ACTIONS = [a for a in ACTIONS if a.name != "review_only"]
+
+
 def choose_action(risk: float, remaining_attempts: int) -> tuple[Action, list[tuple[str, float]]]:
     """Lowest expected cost, not highest risk score.
 
     Returns the chosen action and every option's cost, so the demo can show
     *why* the alternatives were rejected rather than asserting a verdict.
     """
-    costs = [(a.name, expected_cost(a, risk, remaining_attempts)) for a in ACTIONS]
+    costs = [(a.name, expected_cost(a, risk, remaining_attempts))
+             for a in AUTONOMOUS_ACTIONS]
     best = min(costs, key=lambda kv: kv[1])[0]
     return ACTION_BY_NAME[best], costs

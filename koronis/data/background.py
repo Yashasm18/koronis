@@ -20,7 +20,8 @@ DEFAULT_SPAN_S = 4 * 3600.0
 
 
 def load_background(path: Path | None, n_rows: int, seed: int,
-                    span_s: float = DEFAULT_SPAN_S) -> pd.DataFrame:
+                    span_s: float | None = None,
+                    profile: "Profile | None" = None) -> pd.DataFrame:
     """Return `n_rows` canonical background events, all label=0.
 
     When `path` points at IEEE-CIS train_transaction.csv the entity columns are
@@ -31,7 +32,11 @@ def load_background(path: Path | None, n_rows: int, seed: int,
     if path is not None and Path(path).exists():
         df = _from_ieee(Path(path), n_rows, rng)
     else:
-        df = _bootstrap(n_rows, rng, span_s)
+        from ..profiles import BASE
+        prof = profile or BASE
+        df = _bootstrap(n_rows, rng,
+                        span_s if span_s is not None else prof.span_s,
+                        prof.entity_shape, prof.decline_rate)
 
     df["label"] = 0
     df["campaign_id"] = pd.Series([None] * len(df), dtype="object")
@@ -79,14 +84,18 @@ _ENTITY_SHAPE = {
 }
 
 
-def _bootstrap(n_rows: int, rng, span_s: float = DEFAULT_SPAN_S) -> pd.DataFrame:
+def _bootstrap(n_rows: int, rng, span_s: float = DEFAULT_SPAN_S,
+               entity_shape: dict | None = None,
+               decline_rate: float = 0.08) -> pd.DataFrame:
     """Realistic entity reuse: a long tail, but no single dominant entity.
 
     The reuse structure is the part that matters — it is what produces
     legitimate dense subgraphs, and therefore honest false positives.
     """
+    shape = entity_shape or _ENTITY_SHAPE
+
     def zipf_ids(prefix: str, kind: str) -> np.ndarray:
-        frac, alpha = _ENTITY_SHAPE[kind]
+        frac, alpha = shape[kind]
         pool = max(int(n_rows * frac), 2)
         ranks = np.arange(1, pool + 1, dtype=float)
         probs = ranks ** (-alpha)
@@ -105,5 +114,5 @@ def _bootstrap(n_rows: int, rng, span_s: float = DEFAULT_SPAN_S) -> pd.DataFrame
         "email_domain": rng.choice(
             ["gmail.com", "yahoo.com", "outlook.com", "rediff.com", "proton.me"],
             n_rows, p=[0.55, 0.15, 0.15, 0.10, 0.05]),
-        "approved": rng.random(n_rows) > 0.08,
+        "approved": rng.random(n_rows) > decline_rate,
     })
