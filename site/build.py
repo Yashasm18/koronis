@@ -5,7 +5,7 @@ number it shows is read from results/*.json|csv at build time and embedded
 verbatim; nothing is transcribed by hand and nothing is recomputed. If an
 experiment is re-run, rebuilding the site is the only step needed to update it.
 
-    python site/build.py      ->  site/index.html
+    python site/build.py      ->  docs/index.html
 """
 import csv
 import json
@@ -13,7 +13,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 RESULTS = ROOT / "results"
-OUT = ROOT / "site" / "index.html"
+# GitHub Pages serves /docs on the default branch, so the built page lands
+# there and gets a public URL for free. site/ holds the source: template
+# plus this script.
+OUT = ROOT / "docs" / "index.html"
 
 
 def _bundle() -> dict:

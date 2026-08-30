@@ -344,6 +344,21 @@ grep -rnE "^(import|from) (requests|urllib|socket|http|aiohttp|subprocess)" koro
 
 The complete third-party surface is `numpy`, `pandas`, `scikit-learn`, `lightgbm`, `torch`.
 
+## Live demo
+
+**[yashasm18.github.io/koronis](https://yashasm18.github.io/koronis/)** — replay a held-out
+campaign event by event, watch the evidence accumulate, and read the evaluation and
+limitations alongside it.
+
+The page is generated from the result files, not written by hand:
+
+```bash
+python site/build.py       # results/*.json|csv  ->  docs/index.html
+```
+
+Every figure it displays is embedded from `results/` at build time, so it cannot drift out
+of step with the experiment.
+
 ## Run it
 
 ```bash
