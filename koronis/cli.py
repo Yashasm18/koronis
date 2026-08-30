@@ -3,6 +3,7 @@
     python -m koronis.cli ablation    # the headline comparison
     python -m koronis.cli frontier    # predicted vs measured boundary
     python -m koronis.cli latency     # precision/recall/INR over time
+    python -m koronis.cli seeds       # repeat across seeds, report intervals
 """
 import sys
 from pathlib import Path
@@ -87,21 +88,29 @@ def _normalise(s: np.ndarray) -> np.ndarray:
     return s / hi if hi > 0 else s
 
 
-def _fit_all(train: pd.DataFrame):
+def _fit_all(train: pd.DataFrame, seed: int = 0):
     clean = train[train["label"] == 0]
     taus = tune_velocity(clean, window_s=WINDOW_S, fp_budget=FP_BUDGET)
-    gbdt = GBDTDetector(seed=0)
+    gbdt = GBDTDetector(seed=seed)
     gbdt.fit(train)
-    kor = KoronisDetector(seed=0, window_s=WINDOW_S)
+    kor = KoronisDetector(seed=seed, window_s=WINDOW_S)
     kor.fit(train, epochs=60)
     return taus, gbdt, kor
 
 
-def ablation() -> pd.DataFrame:
-    train = _train_set(0)
-    calib = _calibration_set()
-    test = _dataset(1, TEST_K, TEST_CAMO)
-    taus, gbdt, kor = _fit_all(train)
+def _run_once(seed: int = 0) -> pd.DataFrame:
+    """One complete train / calibrate / test cycle at a given seed.
+
+    Every split gets its own seed derived from this one, so repeating across
+    seeds resamples the background traffic, the campaign entities and the
+    model initialisation together. A single run cannot distinguish a real
+    5x gap from a lucky draw; repeating this is what turns the headline into
+    an interval.
+    """
+    train = _train_set(seed * 10)
+    calib = _train_set(seed * 10 + 2)
+    test = _dataset(seed * 10 + 1, TEST_K, TEST_CAMO)
+    taus, gbdt, kor = _fit_all(train, seed=seed)
     y = test["label"].to_numpy()
     y_cal = calib["label"].to_numpy()
 
@@ -144,14 +153,53 @@ def ablation() -> pd.DataFrame:
         })
 
     df = pd.DataFrame(rows)
-    RESULTS.mkdir(exist_ok=True)
-    df.to_csv(RESULTS / "ablation.csv", index=False)
-    print(f"\ntrain: k in {TRAIN_KS} x camo in {TRAIN_CAMOS} (seed 0) | "
-          f"calibration: same distribution (seed 2), thresholds frozen here | "
-          f"\ntest: k={TEST_K} camo={TEST_CAMO} seed 1 (extrapolated) | taus={taus}")
-    print(df.to_string(index=False))
-    print(f"\nrelation attention: {kor.relation_attention()}")
+    df.insert(0, "seed", seed)
+    df.attrs["taus"] = taus
+    df.attrs["attention"] = kor.relation_attention()
     return df
+
+
+def ablation() -> pd.DataFrame:
+    df = _run_once(0)
+    RESULTS.mkdir(exist_ok=True)
+    df.drop(columns=["seed"]).to_csv(RESULTS / "ablation.csv", index=False)
+    print(f"\ntrain: k in {TRAIN_KS} x camo in {TRAIN_CAMOS} | "
+          f"calibration: same distribution, thresholds frozen there | "
+          f"\ntest: k={TEST_K} camo={TEST_CAMO} (extrapolated) | taus={df.attrs['taus']}")
+    print(df.drop(columns=["seed"]).to_string(index=False))
+    print(f"\nrelation attention: {df.attrs['attention']}")
+    return df
+
+
+def seeds(n_seeds: int = 5) -> pd.DataFrame:
+    """Repeat the whole protocol across seeds and report intervals.
+
+    A single run cannot separate a real effect from a lucky draw. Each seed
+    resamples background traffic, campaign entities and model initialisation.
+    """
+    runs = [_run_once(s) for s in range(n_seeds)]
+    allr = pd.concat(runs, ignore_index=True)
+    RESULTS.mkdir(exist_ok=True)
+    allr.to_csv(RESULTS / "seeds_raw.csv", index=False)
+
+    metrics = ["precision", "recall", "pr_auc", "false_positives", "ece"]
+    g = allr.groupby("detector", sort=False)[metrics]
+    summary = g.agg(["mean", "std", "min", "max"]).round(4)
+    # 95% CI on the mean, normal approximation over n_seeds runs
+    ci = (1.96 * g.std() / np.sqrt(n_seeds)).round(4)
+    ci.columns = [c + "_ci95" for c in ci.columns]
+    out = pd.concat([g.mean().round(4), ci], axis=1).reset_index()
+    out.insert(1, "n_seeds", n_seeds)
+    out.to_csv(RESULTS / "seeds_summary.csv", index=False)
+
+    print(f"\n{n_seeds} seeds, full protocol repeated each time\n")
+    print(summary.to_string())
+    print("\nmean +/- 95% CI\n")
+    for _, r in out.iterrows():
+        print(f"  {r['detector']:>15}  precision {r['precision']:.3f} +/- {r['precision_ci95']:.3f}"
+              f"   recall {r['recall']:.3f} +/- {r['recall_ci95']:.3f}"
+              f"   FPs {r['false_positives']:.1f} +/- {r['false_positives_ci95']:.1f}")
+    return out
 
 
 def frontier() -> pd.DataFrame:
@@ -192,4 +240,5 @@ def latency() -> pd.DataFrame:
 
 if __name__ == "__main__":
     cmd = sys.argv[1] if len(sys.argv) > 1 else "ablation"
-    {"ablation": ablation, "frontier": frontier, "latency": latency}[cmd]()
+    {"ablation": ablation, "frontier": frontier, "latency": latency,
+     "seeds": seeds}[cmd]()

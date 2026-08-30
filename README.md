@@ -89,41 +89,52 @@ Koronis detects in all sixteen. Reproduce with `python -m koronis.cli frontier`.
 
 | split | contents | used for |
 |---|---|---|
-| train (seed 0) | `k ∈ {4, 12, 30}` × `camouflage ∈ {0, 0.5, 1}` | fitting model weights |
-| calibration (seed 2) | same distribution as train | **choosing the operating threshold, then frozen** |
-| test (seed 1) | `k = 60`, `camouflage = 1.0` | reported numbers only |
+| train | `k ∈ {4, 12, 30}` × `camouflage ∈ {0, 0.5, 1}` | fitting model weights |
+| calibration | same distribution as train, different draw | **choosing the operating threshold, then frozen** |
+| test | `k = 60`, `camouflage = 1.0`, unseen entities | reported numbers only |
+
+All three are derived from one run seed, so repeating the run resamples every split
+together rather than holding any of them fixed.
 
 Training contains only campaigns concentrated enough that a tuned velocity engine still
 catches them (`k ≤ 30`, below the boundary of ~44). The test campaign is spread **past**
 that boundary, fully camouflaged, with entirely unseen entities — so the hold-out is
 **extrapolation**, not interpolation.
 
-| detector | **precision** | **recall** | PR-AUC | detect | false positives | FP cost | ECE |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| `velocity_tuned` | 0.000 | 0.000 | 0.063 | **never** | 71 | ₹2,840 | 0.068 |
-| `decline_burst` *(no graph, no learning)* | 0.700 | 0.993 | 0.540 | 10.4 s | 170 | ₹6,800 | 0.075 |
-| `shared_entity` *(graph, no learning)* | 0.141 | 0.920 | 0.889 | 72.8 s | 2,246 | ₹89,840 | 0.080 |
-| `gbdt_per_txn` | 0.823 | 0.920 | 0.920 | 0.0 s | 79 | ₹3,160 | 0.017 |
-| **`koronis_graph`** | **0.963** | **0.978** | **0.997** | 14.8 s | **15** | **₹600** | **0.0013** |
+**The whole protocol is repeated across 5 seeds** — each resampling background traffic,
+campaign entities and model initialisation. A single run cannot separate a real effect
+from a lucky draw, so the headline is an interval, not a point.
 
-Campaign exposure if never stopped: ₹29,200.
+| detector | **precision** (mean ± 95% CI) | min–max | **recall** | PR-AUC | false positives | ECE |
+|---|---:|---:|---:|---:|---:|---:|
+| `velocity_tuned` | 0.000 ± 0.000 | 0.000–0.000 | 0.000 | 0.063 | 39 ± 16 | 0.065 |
+| `decline_burst` *(no graph, no learning)* | 0.725 ± 0.028 | 0.693–0.762 | 0.988 | 0.544 | 151 ± 21 | 0.073 |
+| `shared_entity` *(graph, no learning)* | 0.163 ± 0.013 | 0.141–0.181 | 0.926 | 0.894 | 1,920 ± 190 | 0.081 |
+| `gbdt_per_txn` | 0.592 ± **0.294** | **0.000–0.823** | 0.610 | 0.673 ± 0.316 | 99 ± 38 | 0.033 |
+| **`koronis_graph`** | **0.945 ± 0.016** | **0.919–0.963** | **0.987** | **0.997 ± 0.001** | **23 ± 7** | **0.0025** |
+
+Campaign exposure if never stopped: ₹29,200. Reproduce with
+`python -m koronis.cli seeds`; per-run values are in `results/seeds_raw.csv`.
 
 **Three things this table says, none of them the obvious one.**
 
-*The per-transaction model is not blind.* It reaches 0.823 precision and 0.920 recall. What
-it does is fire **five times the false positives** (79 vs 15) and still land below Koronis
-on both.
+*The per-transaction model is not weaker — it is unreliable.* Across seeds its precision
+ranges from **0.823 down to 0.000**: on some draws it fails completely. Its 95% interval is
+±0.294 against Koronis's ±0.016. A single run would have hidden this entirely, and the
+first seed we reported happened to be GBDT's best case. The defensible claim is not "our
+model scores higher" but **"ours holds; theirs is a coin flip on the morphology it meets."**
 
 *The graph signal is real without any learning — and unusable on its own.* Plain
-inverse-frequency co-occurrence counting (`shared_entity`) reaches PR-AUC **0.889**, so the
-structure genuinely carries the signal. But at an operating threshold it fires **2,246**
-false positives. The network is not decorative: it is what turns diffuse graph signal into
-an actionable operating point.
+inverse-frequency co-occurrence counting (`shared_entity`) reaches PR-AUC **0.894 ± 0.007**,
+so the structure genuinely carries the signal, consistently. But at an operating threshold
+it fires **1,920** false positives. The network is not decorative: it does not *find* the
+signal — the counting does that — it makes the signal **usable**.
 
-*Calibration is doing real work.* Every threshold here is chosen on the calibration split
-and frozen. GBDT's transfers badly to the unseen morphology (precision falls to 0.823);
-Koronis's holds. An ECE of 0.0013 means its scores behave like probabilities, so a
-threshold means what its number implies.
+*Calibration is doing real work.* Every threshold is chosen on the calibration split and
+frozen before test is touched. GBDT's transfers unpredictably to an unseen morphology;
+Koronis's holds. An ECE of 0.0025 means its scores behave like probabilities, so a
+threshold means what its number implies — which is the precondition for any cost
+calculation layered on top.
 
 ### Detection latency
 
@@ -246,10 +257,11 @@ The complete third-party surface is `numpy`, `pandas`, `scikit-learn`, `lightgbm
 
 ```bash
 python -m venv .venv && .venv/bin/pip install -r requirements.txt
-.venv/bin/python -m pytest tests/ -q          # 45 tests
+.venv/bin/python -m pytest tests/ -q          # 49 tests
 .venv/bin/python -m koronis.cli ablation      # the headline table
 .venv/bin/python -m koronis.cli frontier      # predicted vs measured boundary
 .venv/bin/python -m koronis.cli latency       # precision/recall over time
+.venv/bin/python -m koronis.cli seeds         # 5 seeds, mean +/- 95% CI
 ```
 
 Results are written to `results/*.csv`. Every number in this README comes from those files.
