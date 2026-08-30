@@ -1,4 +1,5 @@
 <title>Koronis Risk Console</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='15' fill='%23131922'/%3E%3Cg stroke='%235B94FF' stroke-width='1.4' opacity='.85'%3E%3Cpath d='M11 12 L20 10 M20 10 L22 19 M22 19 L13 21 M13 21 L11 12 M11 12 L22 19'/%3E%3C/g%3E%3Cg fill='%235B94FF'%3E%3Ccircle cx='11' cy='12' r='2.6'/%3E%3Ccircle cx='20' cy='10' r='2.6'/%3E%3Ccircle cx='22' cy='19' r='2.6'/%3E%3Ccircle cx='13' cy='21' r='2.6'/%3E%3C/g%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
@@ -89,6 +90,8 @@ button.act:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
   text-transform:uppercase;color:var(--ink-3)}
 .metric .v{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;
   font-size:22px;font-weight:500;letter-spacing:-.02em}
+.metric .sub2{font-family:"IBM Plex Mono",monospace;font-size:9.5px;color:var(--ink-3);
+  line-height:1.35;min-height:13px}
 
 /* panels */
 .grid{display:grid;grid-template-columns:1.35fr 1fr;gap:14px}
@@ -183,11 +186,15 @@ td.rng{color:var(--ink-3);font-size:10.5px}
     </div>
 
     <div class="metrics">
-      <div class="metric"><span class="k">Elapsed</span><span class="v" id="m-clock">00:00</span></div>
+      <div class="metric"><span class="k" id="m-clock-k">Before incident</span>
+        <span class="v" id="m-clock">T−04:57</span></div>
       <div class="metric"><span class="k">Events scored</span><span class="v" id="m-seen">0</span></div>
       <div class="metric"><span class="k">Risk score</span><span class="v" id="m-score">—</span></div>
-      <div class="metric"><span class="k">Alerts</span><span class="v" id="m-alerts">0</span></div>
-      <div class="metric"><span class="k">Velocity rules</span><span class="v" id="m-vel" style="font-size:15px">Quiet</span></div>
+      <div class="metric"><span class="k">Campaign alerts</span><span class="v" id="m-alerts">0</span>
+        <span class="sub2" id="m-alerts-sub"></span></div>
+      <div class="metric"><span class="k">Velocity rules</span>
+        <span class="v" id="m-vel" style="font-size:14px">No campaign alert</span>
+        <span class="sub2" id="m-vel-sub"></span></div>
     </div>
 
     <div class="grid">
@@ -452,22 +459,42 @@ function updateCard(e){
       "Coordination is what separates this from ordinary declines.";
   } else {
     why = "<b>"+e.ring+" linked alerts</b> inside the window, connected by "+ev.device_id+
-      " device, "+ev.ip_id+" IP and "+ev.bin_id+" BIN relations. No single attempt here is "+
-      "remarkable; the <b>overlap</b> is. Velocity rules remain silent — every entity stays "+
-      "under threshold.";
+      " device, "+ev.ip_id+" IP and "+ev.bin_id+" BIN relations. A declined authorisation is "+
+      "weak early evidence; <b>overlap across linked attempts</b> is what makes the response "+
+      "actionable. Velocity rules raise no campaign alert — every entity stays under "+
+      "threshold.";
   }
   el("card-why").innerHTML = why;
 }
 
 function render(){
-  el("m-clock").textContent = (t<0?"-":"") + mmss(Math.abs(t));
+  /* Before the campaign starts the clock counts down to onset; a bare
+     negative "elapsed" reads as a bug rather than as pre-incident context. */
+  el("m-clock-k").textContent = t < 0 ? "Before incident" : "Since onset";
+  el("m-clock").textContent = (t < 0 ? "T−" : "T+") + mmss(Math.abs(t));
   el("m-seen").textContent = num(seen.length);
-  el("m-alerts").textContent = num(alerts);
+
+  /* Alerts are split by what they landed on. A single number would invite the
+     reader to compare it against the evaluation table's false-positive count,
+     which measures something else entirely. */
+  var campAlerts = 0, bgAlerts = 0;
+  seen.forEach(function(e){ if(e.alert){ e.campaign ? campAlerts++ : bgAlerts++; } });
+  el("m-alerts").textContent = num(campAlerts);
+  el("m-alerts-sub").textContent = bgAlerts
+    ? bgAlerts + " on background traffic" : "none on background";
+
   var last = seen.length ? seen[seen.length-1] : null;
   el("m-score").textContent = last ? last.score.toFixed(3) : "—";
-  var velFired = seen.some(function(e){return e.vel_alert;});
-  el("m-vel").textContent = velFired ? "Fired" : "Quiet";
-  el("m-vel").style.color = velFired ? "var(--crit)" : "var(--ink-3)";
+
+  /* Velocity fires on background traffic in this replay but never on the
+     campaign. "Fired" alone would contradict the assessment text, so the two
+     cases are reported separately. */
+  var velCamp = seen.some(function(e){return e.vel_alert && e.campaign;});
+  var velBg = seen.filter(function(e){return e.vel_alert && !e.campaign;}).length;
+  el("m-vel").textContent = velCamp ? "Campaign alert" : "No campaign alert";
+  el("m-vel").style.color = velCamp ? "var(--crit)" : "var(--ink-3)";
+  el("m-vel-sub").textContent = velBg
+    ? velBg + " background rule alert" + (velBg > 1 ? "s" : "") : "";
   el("feed").innerHTML = seen.slice(-40).reverse().map(feedRow).join("");
   updateCard(lastAlert || last);
   drawChart(); drawGraph();
@@ -588,6 +615,7 @@ function doReset(){
   playing=false; cancelAnimationFrame(raf);
   i=0; t=T_START; seen=[]; alerts=0; lastAlert=null; gpos={};
   el("play").textContent = "Replay incident"; setStage(0); render();
+  el("m-score").textContent = "—";
   el("card-why").innerHTML = "Press <b>Replay incident</b> to stream the held-out campaign one event at a time.";
   el("card-title").textContent = "Awaiting traffic";
 }
