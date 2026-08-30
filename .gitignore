@@ -2,5 +2,4 @@ __pycache__/
 *.pyc
 .venv/
 data/raw/
-results/
 .DS_Store
