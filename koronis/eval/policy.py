@@ -2,7 +2,14 @@
 
 A detector is scored on precision and recall. A response policy has to be
 scored on what it costs the merchant and what it puts on an analyst's desk.
-These are different questions and the second is the one a fraud team asks.
+
+Two policies are reported side by side, and the distinction matters:
+
+* `oracle_policy` is told the true number of attempts still to come, and
+  whether the incident is genuine. Neither is knowable live. It is an **upper
+  bound**, not a product.
+* `causal_policy` sees only a prefix of each incident plus a forecast with an
+  interval. The gap between them is the price of not knowing the future.
 
 All costs are ASSUMPTIONS declared in `koronis/incident.py` and
 `koronis/eval/cost.py`. Nothing here executes an action; the policies are
@@ -11,78 +18,108 @@ simulated over a recorded stream.
 import numpy as np
 import pandas as pd
 
+from ..forecast import ExposureForecaster
 from ..incident import (
     ACTION_BY_NAME, ANALYST_COST_PER_MIN_INR, TRIAGE_MINUTES_PER_EVENT,
-    Incident, IncidentRisk, build_incidents, choose_action, expected_cost,
+    Incident, IncidentRisk, build_incidents, choose_action,
 )
 from .cost import COST_PER_ATTEMPT_INR
 
+# How far into an incident the causal policy commits. A live system decides on
+# a prefix; deciding at the end is hindsight wearing a timestamp.
+DECIDE_AFTER = 12
+# When the upper forecast exceeds the median by this factor, the forecaster is
+# effectively saying it does not know. Automating on that is worse than asking
+# a person, so the policy escalates to review instead of acting confidently.
+UNCERTAINTY_RATIO = 4.0
+
 
 def _remaining_after(events: pd.DataFrame, campaign_id: str, t: float) -> int:
-    """Campaign attempts still to come when a decision is taken at `t`."""
+    """Campaign attempts still to come at `t`. Oracle input — offline only."""
     camp = events[events["campaign_id"] == campaign_id]
     return int((camp["ts"] > t).sum())
 
 
 def _realised_cost(action_name: str, inc: Incident, remaining: int) -> dict:
-    """What the action actually costs, given ground truth.
+    """What the action actually cost, given ground truth.
 
-    `expected_cost` is what the policy believed before acting; this is the bill
+    `expected_cost` is what a policy believed before acting; this is the bill
     afterwards. Reporting both is what separates a decision system from a
     scoring function.
     """
     a = ACTION_BY_NAME[action_name]
-    analyst_min = a.analyst_minutes
-    cost = a.friction_inr + analyst_min * ANALYST_COST_PER_MIN_INR
+    cost = a.friction_inr + a.analyst_minutes * ANALYST_COST_PER_MIN_INR
     if inc.is_true():
         cost += remaining * COST_PER_ATTEMPT_INR * (1.0 - a.stops)
         stopped = remaining * a.stops
     else:
         cost += a.false_harm_inr
         stopped = 0.0
-    return {"cost": cost, "analyst_minutes": analyst_min, "stopped": stopped}
+    return {"cost": cost, "analyst_minutes": a.analyst_minutes, "stopped": stopped}
 
 
 def evaluate_policies(events: pd.DataFrame, scores: np.ndarray, threshold: float,
                       risk_model: IncidentRisk,
+                      forecaster: ExposureForecaster | None = None,
                       link_window_s: float = 900.0) -> tuple[pd.DataFrame, list[dict]]:
-    """Compare four ways of responding to the same scored stream."""
+    """Compare five ways of responding to the same scored stream."""
     incidents = build_incidents(events, scores, threshold, link_window_s)
     risks = risk_model.predict(incidents)
     for inc, r in zip(incidents, risks):
         inc.risk = float(r)
 
-    campaigns = [c for c in events["campaign_id"].dropna().unique()]
+    campaigns = list(events["campaign_id"].dropna().unique())
     total_exposure = sum(
         int((events["campaign_id"] == c).sum()) * COST_PER_ATTEMPT_INR
         for c in campaigns)
 
     detail = []
     for inc in incidents:
-        remaining = max(
+        # ── oracle input: the true future ──
+        oracle_remaining = max(
             (_remaining_after(events, c, inc.t_start) for c in campaigns),
             default=0) if inc.is_true() else 0
-        action, costs = choose_action(inc.risk, remaining)
+        oracle_action, oracle_costs = choose_action(inc.risk, oracle_remaining)
+
+        # ── causal input: a prefix and a forecast ──
+        m = min(DECIDE_AFTER, len(inc.rows))
+        p50, hi = (forecaster.predict_one(events, inc.rows, scores, m)
+                   if forecaster is not None else (0.0, 0.0))
+        # "Will there be more" times "does it matter".
+        exp_remaining = int(round(inc.risk * p50))
+        causal_action, causal_costs = choose_action(inc.risk, exp_remaining)
+        uncertain = hi > max(p50, 1.0) * UNCERTAINTY_RATIO
+        if uncertain and inc.risk > 0.5 and causal_action.name == "monitor":
+            causal_action = ACTION_BY_NAME["hold_review"]
+
         detail.append({
             "incident_id": inc.incident_id, "risk": round(inc.risk, 4),
             "n_attempts": inc.n_attempts, "n_devices": inc.n_devices,
             "n_ips": inc.n_ips, "n_bins": inc.n_bins,
-            "remaining_attempts": remaining,
-            "remaining_exposure_inr": round(remaining * COST_PER_ATTEMPT_INR, 2),
-            "genuine": inc.is_true(), "action": action.name,
-            "option_costs": {k: round(v, 2) for k, v in costs},
+            "observed_at_decision": m,
+            "forecast_remaining_p50": round(p50, 1),
+            "forecast_remaining_p90": round(hi, 1),
+            "forecast_exposure_p50_inr": round(p50 * COST_PER_ATTEMPT_INR, 2),
+            "forecast_exposure_p90_inr": round(hi * COST_PER_ATTEMPT_INR, 2),
+            "forecast_uncertain": bool(uncertain),
+            "true_remaining_attempts": oracle_remaining,
+            "true_remaining_exposure_inr": round(oracle_remaining * COST_PER_ATTEMPT_INR, 2),
+            "genuine": inc.is_true(),
+            "action": causal_action.name,
+            "oracle_action": oracle_action.name,
+            "option_costs": {k: round(v, 2) for k, v in causal_costs},
+            "oracle_option_costs": {k: round(v, 2) for k, v in oracle_costs},
             "t_start": round(inc.t_start, 2),
         })
 
     n_events_fired = int((np.asarray(scores) >= threshold).sum())
     rows = []
 
-    def summarise(name, per_incident_actions, analyst_min_override=None):
+    def summarise(name, actions, analyst_min_override=None):
         cost = stopped = analyst = 0.0
-        sent = 0
-        false_inc = 0
-        for inc, d, act in zip(incidents, detail, per_incident_actions):
-            r = _realised_cost(act, inc, d["remaining_attempts"])
+        sent = false_inc = 0
+        for inc, d, act in zip(incidents, detail, actions):
+            r = _realised_cost(act, inc, d["true_remaining_attempts"])
             cost += r["cost"]; stopped += r["stopped"]; analyst += r["analyst_minutes"]
             if act != "monitor":
                 sent += 1
@@ -102,13 +139,19 @@ def evaluate_policies(events: pd.DataFrame, scores: np.ndarray, threshold: float
 
     summarise("always_allow", ["monitor"] * len(incidents))
     summarise("always_hold", ["hold_review"] * len(incidents))
-    # Event-by-event thresholding: no consolidation, so every alerted event is
-    # its own ticket. The action is the same as ours; the workload is not.
+    # Event thresholding: no consolidation, so every alerted event is its own
+    # ticket. The action matches the causal policy; the workload does not.
     summarise("event_thresholding", [d["action"] for d in detail],
               analyst_min_override=n_events_fired * TRIAGE_MINUTES_PER_EVENT)
-    summarise("incident_policy", [d["action"] for d in detail])
+    summarise("causal_policy", [d["action"] for d in detail])
+    summarise("oracle_policy", [d["oracle_action"] for d in detail])
 
     df = pd.DataFrame(rows)
+    cost = dict(zip(df["policy"], df["merchant_cost_inr"]))
+    df["regret_vs_oracle_inr"] = round(
+        cost.get("causal_policy", 0.0) - cost.get("oracle_policy", 0.0), 2)
+    df["actions_matching_oracle"] = sum(
+        1 for d in detail if d["action"] == d["oracle_action"])
     df["exposure_if_unstopped_inr"] = round(total_exposure, 2)
     df["events_alerted"] = n_events_fired
     df["incidents_formed"] = len(incidents)
@@ -119,9 +162,9 @@ def incident_reliability(incidents: list[Incident], risks: np.ndarray,
                          bins: int = 5) -> pd.DataFrame:
     """Reliability of INCIDENT risk, reported separately from the event model.
 
-    Low event-level calibration error does not carry over to incidents: the
-    events inside one are strongly dependent, so nothing about their individual
-    reliability guarantees the aggregate is a probability. This is measured, not
+    Low event-level calibration error does not carry over: the events inside an
+    incident are strongly dependent, so nothing about their individual
+    reliability guarantees the aggregate is a probability. Measured, not
     inherited.
     """
     risks = np.asarray(risks, dtype=float)

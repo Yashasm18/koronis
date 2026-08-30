@@ -100,21 +100,48 @@ def test_risk_model_is_underdetermined_by_a_single_incident():
     assert r[0] < 0.95        # cannot be confident from one example
 
 
-def test_incident_policy_beats_the_alternatives(stream):
-    """The product claim, asserted rather than narrated."""
+class _PerfectForecast:
+    """A forecaster that knows the remaining count exactly.
+
+    Used to test the POLICY in isolation. The forecaster's own accuracy is
+    tested in tests/test_forecast.py, and the cost of its real error is
+    reported as action regret by `koronis.cli incidents`.
+    """
+
+    upper_q = 0.9
+
+    @staticmethod
+    def predict_one(events, rows, scores, m):
+        remaining = float(len(rows) - m)
+        return remaining, remaining
+
+
+def test_oracle_policy_beats_the_alternatives(stream):
+    """The upper bound: given the true future, the policy is the cheapest."""
     ev, sc = stream
-    summary, detail = evaluate_policies(ev, sc, 0.5, _OracleRisk())
+    summary, _ = evaluate_policies(ev, sc, 0.5, _OracleRisk())
     cost = dict(zip(summary["policy"], summary["merchant_cost_inr"]))
-    assert cost["incident_policy"] <= cost["always_allow"]
-    assert cost["incident_policy"] <= cost["always_hold"]
-    assert cost["incident_policy"] <= cost["event_thresholding"]
+    assert cost["oracle_policy"] <= cost["always_allow"]
+    assert cost["oracle_policy"] <= cost["always_hold"]
+    assert cost["oracle_policy"] <= cost["event_thresholding"]
+
+
+def test_causal_policy_matches_oracle_given_a_perfect_forecast(stream):
+    """Isolates policy from forecast: with the future known, the causal path
+    must reproduce the oracle exactly. Any gap is a bug in the policy, not
+    forecast error."""
+    ev, sc = stream
+    summary, detail = evaluate_policies(ev, sc, 0.5, _OracleRisk(), _PerfectForecast())
+    cost = dict(zip(summary["policy"], summary["merchant_cost_inr"]))
+    assert cost["causal_policy"] == pytest.approx(cost["oracle_policy"])
+    assert all(d["action"] == d["oracle_action"] for d in detail)
 
 
 def test_incident_policy_cuts_analyst_workload(stream):
     ev, sc = stream
-    summary, _ = evaluate_policies(ev, sc, 0.5, _OracleRisk())
+    summary, _ = evaluate_policies(ev, sc, 0.5, _OracleRisk(), _PerfectForecast())
     mins = dict(zip(summary["policy"], summary["analyst_minutes"]))
-    assert mins["incident_policy"] < mins["event_thresholding"]
+    assert mins["causal_policy"] < mins["event_thresholding"]
 
 
 def test_reliability_is_measured_at_incident_level(stream):

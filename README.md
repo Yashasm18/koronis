@@ -2,7 +2,7 @@
 
 **Detecting distributed card-testing campaigns that per-entity velocity rules cannot see — at any threshold.**
 
-[![tests](https://img.shields.io/badge/tests-70%20passing-2ea44f)](tests/)
+[![tests](https://img.shields.io/badge/tests-77%20passing-2ea44f)](tests/)
 [![python](https://img.shields.io/badge/python-3.11%2B-3776ab)](https://www.python.org/)
 [![graph libs](https://img.shields.io/badge/graph%20libraries-none-8a3ffc)](koronis/models/layers.py)
 [![track](https://img.shields.io/badge/Razorpay%20Buildathon-Track%2002%20·%20AI%20Risk%20Manager-0c2451)](https://razorpay.com/buildathon/)
@@ -235,9 +235,50 @@ their own and re-run.
 | step-up verification | ₹350 | ₹1,800 | 85% | — |
 | hold + review | ₹900 | ₹6,000 | 97% | 12 min |
 
-The chosen action minimises `friction + risk × remaining_exposure × (1 − stops) +
+The chosen action minimises `friction + risk × forecast_exposure × (1 − stops) +
 (1 − risk) × false_harm`. A high risk score with nothing left to prevent correctly gets
 `monitor`; a test asserts exactly that.
+
+### The policy cannot be allowed to know the future
+
+Choosing an action needs an estimate of what inaction would cost — the attempts still to
+come. Offline that can be read off the campaign log. **A live system cannot**, so a policy
+built on the true remaining count is an *oracle upper bound*, not a product. Both are
+reported, and the difference between them is the price of not knowing.
+
+`causal_policy` sees only the first **12 events** of an incident plus a forecast. It never
+sees the true remaining count or the ground-truth label.
+
+### Forecasting what is still ahead
+
+At each incident snapshot, using only observed signals — attempts so far, attempt-rate
+trend, score trend, decline ratio, entity spread, incident age, relationship density — a
+quantile model predicts **how many more alerted events will join this incident**.
+
+That target is deliberately **label-free**: it is a structural quantity, observable in
+hindsight without anyone deciding whether the incident was genuine. Whether it *matters* is
+the separate question the incident risk model answers, and the policy multiplies the two:
+
+```
+expected remaining exposure  =  P(genuine) × forecast(remaining attempts) × ₹73
+```
+
+The upper quantile is **conformalised** against held-out residuals, because raw quantile
+regression is routinely over-confident and a "90%" interval covering 60% of the time is
+worse than no interval at all.
+
+| | measured |
+|---|---|
+| P90 interval coverage | **91.8%** (target 90%) |
+| Median absolute error, P50 | 157.5 attempts |
+| Mean true remaining | 347.6 attempts |
+| Fitted / evaluated on | 85 calibration snapshots / 97 held-out |
+
+**Campaign length is varied across streams** for this evaluation, and that is not a detail.
+With every campaign the same length, "remaining" collapses to a constant minus what you have
+seen — the forecaster scored a median error of **6.7 attempts** while learning nothing but
+`N_ATTEMPTS`. Varying the size raised the error to 157.5 and made the problem real. A test
+records the difference so it cannot regress.
 
 ### Policy comparison
 
@@ -248,7 +289,20 @@ Median across 8 independent test streams:
 | always allow | 0 | 0 | 0 | ₹29,200 |
 | always hold | 6 | **5** | 72 | ₹36,924 |
 | event-by-event thresholding | 1 | 0 | **205.8** | ₹3,736 |
-| **incident policy** | **1** | **0** | **12** | **₹1,884** |
+| **causal policy** *(forecast only)* | **1** | **0** | **12** | **₹1,884** |
+| oracle policy *(upper bound)* | 1 | 0 | 12 | ₹1,884 |
+
+**Action regret vs the oracle: ₹0 — the causal policy chooses the same action on 11 / 11
+incidents.** Despite a median forecast error of 157 attempts, the decision is unchanged,
+because the cost gaps between actions are large relative to that error.
+
+That is the honest reading, and it comes with a caveat: on this distribution incidents are
+either clearly large or clearly singleton, so the decision is not close. A mix with more
+mid-sized incidents would expose non-zero regret, and the regret metric is reported so that
+would show rather than hide.
+
+When the forecast interval is wide relative to its own median, the policy **escalates to
+analyst review rather than automating** on a number the model does not stand behind.
 
 Event thresholding reaches the same decision, but hands an analyst **205.8 minutes** of
 triage instead of 12 — consolidation, not detection, is the difference. Always-hold escalates
@@ -442,7 +496,7 @@ python -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/python -m koronis.cli replay        # causal event-by-event replay -> JSON
 .venv/bin/python -m koronis.cli benchmark     # p50/p95 per-event inference latency
 .venv/bin/python -m koronis.cli mechanism     # which mechanism carries the signal
-.venv/bin/python -m koronis.cli incidents     # alerts -> incidents -> recommended action
+.venv/bin/python -m koronis.cli incidents     # alerts -> incidents -> forecast -> action
 ```
 
 Results are written to `results/*.csv`. Every number in this README comes from those files.

@@ -28,6 +28,7 @@ from .models.gbdt import GBDTDetector
 from .models.heuristic import DeclineBurstDetector, SharedEntityDetector
 from .models.koronis import KoronisDetector
 from .models.velocity import MultiEntityVelocityDetector, tune_velocity
+from .forecast import ExposureForecaster, build_snapshots, evaluate_forecast
 from .incident import IncidentRisk, build_incidents
 from .eval.policy import evaluate_policies, incident_reliability
 from .stream import StreamingKoronis
@@ -54,12 +55,28 @@ N_ATTEMPTS = 400
 N_BACKGROUND = 6000
 
 
-def _dataset(seed: int, k: int, camouflage: float = 0.0) -> pd.DataFrame:
+def _dataset(seed: int, k: int, camouflage: float = 0.0,
+             n_attempts: int | None = None) -> pd.DataFrame:
     bg = load_background(path=None, n_rows=N_BACKGROUND, seed=seed)
-    spec = CampaignSpec(n_attempts=N_ATTEMPTS, k_devices=k, k_ips=k, n_bins=k,
+    spec = CampaignSpec(n_attempts=n_attempts or N_ATTEMPTS,
+                        k_devices=k, k_ips=k, n_bins=k,
                         duration_s=WINDOW_S, start_ts=float(bg["ts"].iloc[500]),
                         camouflage=camouflage)
     return inject(bg, [spec], seed=seed)
+
+
+# Campaign length is FIXED in the detection experiments, where the held-out
+# axis is spread and camouflage and size is deliberately controlled. It must
+# NOT be fixed for the forecaster: with every campaign exactly N_ATTEMPTS long,
+# "how many attempts remain" collapses to N_ATTEMPTS minus what you have seen,
+# and a forecaster scores beautifully by memorising a constant of the
+# simulation. Sizes are drawn per stream so the forecast has to be inferred
+# from the observed prefix.
+CAMPAIGN_SIZES = (150, 240, 380, 520, 700, 900, 300, 460)
+
+
+def _sized_stream(seed: int, k: int, camouflage: float, idx: int) -> pd.DataFrame:
+    return _dataset(seed, k, camouflage, n_attempts=CAMPAIGN_SIZES[idx % len(CAMPAIGN_SIZES)])
 
 
 def _calibration_set(seed: int = 2) -> pd.DataFrame:
@@ -359,27 +376,36 @@ def incidents() -> pd.DataFrame:
                                     calib0["label"].to_numpy(),
                                     COST_PER_ATTEMPT_INR, COST_PER_FALSE_BLOCK_INR)
 
-    cal_inc = []
+    cal_inc, cal_snaps = [], []
     for j in range(N_POLICY_STREAMS):
-        _, inc = _incidents_for(_calibration_set(500 + j * 7))
+        f = _sized_stream(500 + j * 7, max(TRAIN_KS), 1.0, j)
+        sc, inc = _incidents_for(f)
         cal_inc.extend(inc)
+        cal_snaps.append(build_snapshots(f, inc, sc))
     risk = IncidentRisk().fit(cal_inc)
+
+    # The forecaster is fitted on CALIBRATION snapshots only. Its target -
+    # how many more alerted events join an incident - needs no labels at all,
+    # so this stays clean even before the risk model has an opinion.
+    cal_snaps = pd.concat(cal_snaps, ignore_index=True) if cal_snaps else pd.DataFrame()
+    fc = ExposureForecaster(seed=0).fit(cal_snaps)
 
     # Headline stream, the one the demo replays.
     test = _dataset(1, TEST_K, TEST_CAMO)
     scores = _raw(kor.score_events(test))
-    summary, detail = evaluate_policies(test, scores, thr, risk)
+    summary, detail = evaluate_policies(test, scores, thr, risk, fc)
 
     # Policy comparison and reliability pooled over independent test streams.
-    pooled, pool_inc, pool_risk = [], [], []
+    pooled, pool_inc, pool_risk, test_snaps = [], [], [], []
     for j in range(N_POLICY_STREAMS):
-        f = _dataset(900 + j * 11, TEST_K, TEST_CAMO)
+        f = _sized_stream(900 + j * 11, TEST_K, TEST_CAMO, j + 3)
         sc, inc = _incidents_for(f)
         r = risk.predict(inc)
         for i2, rv in zip(inc, r):
             i2.risk = float(rv)
         pool_inc.extend(inc); pool_risk.extend(list(r))
-        sm, _ = evaluate_policies(f, sc, thr, risk)
+        test_snaps.append(build_snapshots(f, inc, sc))
+        sm, _ = evaluate_policies(f, sc, thr, risk, fc)
         sm["stream"] = j
         pooled.append(sm)
 
@@ -388,6 +414,8 @@ def incidents() -> pd.DataFrame:
               [["incidents_actioned", "false_incidents", "analyst_minutes",
                 "merchant_cost_inr"]].median().round(1).reset_index())
     rel = incident_reliability(pool_inc, np.array(pool_risk))
+    test_snaps = pd.concat(test_snaps, ignore_index=True) if test_snaps else pd.DataFrame()
+    fcast = evaluate_forecast(fc, test_snaps)
 
     RESULTS.mkdir(exist_ok=True)
     summary.to_csv(RESULTS / "policy.csv", index=False)
@@ -400,7 +428,10 @@ def incidents() -> pd.DataFrame:
                "reliability": rel.replace({np.nan: None}).to_dict("records"),
                "n_calibration_incidents": len(cal_inc),
                "n_pooled_test_incidents": len(pool_inc),
-               "n_streams": N_POLICY_STREAMS},
+               "n_streams": N_POLICY_STREAMS,
+               "forecast": fcast,
+               "n_calibration_snapshots": int(len(cal_snaps)),
+               "campaign_sizes": list(CAMPAIGN_SIZES)},
               open(RESULTS / "policy.json", "w"), separators=(",", ":"))
 
     print(f"\n{summary['events_alerted'].iloc[0]} event alerts -> "
@@ -418,6 +449,16 @@ def incidents() -> pd.DataFrame:
               f"genuine={str(d['genuine']):>5}  -> {d['action']}")
     print("\nincident-level reliability (measured, not inherited):")
     print(rel.dropna().to_string(index=False))
+    print(f"\nremaining-exposure forecast, fitted on {len(cal_snaps)} calibration "
+          f"snapshots, evaluated on {fcast.get('n_snapshots', 0)} held-out:")
+    print(f"  P{int(fc.upper_q*100)} coverage {fcast['coverage_upper']:.1%} "
+          f"(target {fc.upper_q:.0%})   median abs error "
+          f"{fcast['median_abs_err_p50']:.1f} attempts   "
+          f"mean true remaining {fcast['mean_true_remaining']:.1f}")
+    reg = summary["regret_vs_oracle_inr"].iloc[0]
+    match = summary["actions_matching_oracle"].iloc[0]
+    print(f"\naction regret vs oracle: INR {reg:,.0f}  "
+          f"({match}/{len(detail)} incidents get the same action)")
     return summary
 
 
