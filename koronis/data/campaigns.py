@@ -63,6 +63,16 @@ def _one_campaign(spec: CampaignSpec, cid: str, ns: str,
     # that load is uniform across them, which is what makes the (n, k) frontier
     # sweep well defined.
     #
+    # Each entity type gets an INDEPENDENT shuffle of that assignment. Using
+    # the same order for all three made device, IP and BIN partition the
+    # campaign identically - device 0, IP 0 and BIN 0 covered the very same
+    # attempts - so the three relations produced one grouping and never
+    # cross-linked. The campaign was 60 disjoint cliques with no bridge between
+    # them, and only a shared email domain held it together. A real attacker
+    # does not rotate devices, IPs and BIN ranges in lockstep; independent
+    # assignment lets the relations cross-cut, which is what makes the campaign
+    # one connected component for the right reason.
+    #
     # Every entity type must use it. Assigning one of them randomly instead -
     # BINs originally used rng.choice - looks equivalent but is not: the
     # multinomial maximum runs far above the mean, so at n=400, k=50 the
@@ -73,9 +83,12 @@ def _one_campaign(spec: CampaignSpec, cid: str, ns: str,
     #
     # Uniform spread is also the attacker's best play, so this measures the
     # boundary against a maximally evasive adversary rather than a sloppy one.
-    dev = devices[np.arange(n) % spec.k_devices]
-    ip = ips[np.arange(n) % spec.k_ips]
-    binseq = bins[np.arange(n) % spec.n_bins]
+    def _assign(pool, k):
+        return pool[rng.permutation(n) % k]
+
+    dev = _assign(devices, spec.k_devices)
+    ip = _assign(ips, spec.k_ips)
+    binseq = _assign(bins, spec.n_bins)
 
     return pd.DataFrame({
         "event_id": [f"{tag}_{i}" for i in range(n)],

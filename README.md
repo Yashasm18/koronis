@@ -2,7 +2,7 @@
 
 **Detecting distributed card-testing campaigns that per-entity velocity rules cannot see — at any threshold.**
 
-[![tests](https://img.shields.io/badge/tests-89%20passing-2ea44f)](tests/)
+[![tests](https://img.shields.io/badge/tests-93%20passing-2ea44f)](tests/)
 [![python](https://img.shields.io/badge/python-3.11%2B-3776ab)](https://www.python.org/)
 [![graph libs](https://img.shields.io/badge/graph%20libraries-none-8a3ffc)](koronis/models/layers.py)
 [![track](https://img.shields.io/badge/Razorpay%20Buildathon-Track%2002%20·%20AI%20Risk%20Manager-0c2451)](https://razorpay.com/buildathon/)
@@ -119,10 +119,10 @@ redefine what a score means, hollowing out the claim that the threshold was froz
 | detector | PR-AUC | precision | recall | false positives | **detected** |
 |---|---:|---:|---:|---:|---:|
 | `velocity_tuned` | 0.062 `[0.062, 0.062]` | 0.000 | 0.000 | 44 | **0 / 10** |
-| `decline_burst` *(no graph, no learning)* | 0.221 `[0.212, 0.234]` | 0.234 | 0.013 | 16 | 6 / 10 |
-| `shared_entity` *(graph, no learning)* | 0.055 `[0.054, 0.056]` | 0.000 | 0.000 | 35 | **0 / 10** |
-| `gbdt_per_txn` | 0.319 `[0.289, 0.339]` | 0.398 | 0.811 | **490** `[456, 540]` | 10 / 10 |
-| **`koronis_graph`** | **0.988** `[0.984, 0.992]` | **0.947** `[0.931, 0.963]` | **0.970** | **22** `[15, 29]` | **10 / 10** |
+| `decline_burst` *(no graph, no learning)* | 0.222 `[0.205, 0.234]` | 0.000 | 0.000 | 0 | **3 / 10** |
+| `shared_entity` *(graph, no learning)* | 0.051 `[0.050, 0.051]` | 0.000 | 0.000 | 40 | **0 / 10** |
+| `gbdt_per_txn` | 0.332 `[0.311, 0.352]` | 0.410 | 0.836 | 476 | **10 / 10** |
+| **`koronis_graph`** | 0.990 `[0.987, 0.995]` | 0.951 | 0.964 | 20 | **10 / 10** |
 
 Campaign exposure if never stopped: ₹29,200. Per-trial values in `results/seeds_raw.csv`.
 Reproduce with `python -m koronis.cli seeds`.
@@ -134,12 +134,12 @@ trials and it never once detects the campaign. That is not an empirical tendency
 Claim 1: at `k = 60` against a binding `τ = 8`, no counter can trip.
 
 *The per-transaction model finds the campaign and drowns the analyst.* It detects every
-time and recalls 81% of attempts — at **490 false positives** against Koronis's **22**, a
-**22× difference**. Recall was never the hard part of this problem; precision at a usable
+time and recalls 84% of attempts — at **476 false positives** against Koronis's **20**, a
+**24× difference**. Recall was never the hard part of this problem; precision at a usable
 alert volume is.
 
 *Raw graph counting is defeated by dense traffic.* Plain inverse-frequency co-occurrence
-(`shared_entity`) reaches only **0.055** PR-AUC and never fires. An earlier version of this
+(`shared_entity`) reaches only **0.051** PR-AUC and never fires. An earlier version of this
 README reported it at 0.894 and called it a strong baseline — that was measured on
 background traffic of 9 events/hour, where a campaign was 97% of everything in its own
 window. At a realistic 1,600 events/hour, legitimate devices, IPs and BINs co-occur
@@ -224,12 +224,17 @@ one campaign. Koronis consolidates them, then recommends the intervention with t
 **expected cost**, not the one matching the highest risk score.
 
 ```
-419 event alerts  →  11 incidents  →  1 action recommended
+414 event alerts  →  17 incidents  →  1 action recommended
 ```
 
-On the held-out stream, the genuine campaign becomes a single incident of **408 attempts
-across 72 devices, 72 IPs and 72 BIN ranges**, at risk 1.000. The other ten incidents are
-isolated background alerts at risk ≈ 0.07 — correctly left on `monitor`.
+On the held-out stream the genuine campaign becomes one incident; the rest are isolated
+background alerts at low risk, correctly left on `monitor`.
+
+**Two concurrent rings stay two incidents.** A merchant attacked by two campaigns at once
+needs two decisions, not one blob. Alerts are linked only through entity values specific
+enough to be evidence — a value covering more than 2% of the whole stream cannot link
+anything, because sharing gmail.com says nothing. Lift that guard and the two rings merge
+into a single 600-attempt incident; a test asserts both halves.
 
 ### The action assumptions
 
@@ -286,9 +291,9 @@ incident ids restart at `INC-000` for every stream.
 
 | | measured |
 |---|---|
-| P90 interval coverage | **99.0%** (target 90%) |
-| Median absolute error, P50 | 221.6 attempts |
-| Mean true remaining | 347.6 attempts |
+| P90 interval coverage | **96.6%** (target 90%) |
+| Median absolute error, P50 | 104.0 attempts |
+| Mean true remaining | 370.4 attempts |
 | Fit / conformal / evaluation | 4 streams / 4 streams / 97 held-out snapshots |
 
 **The interval over-covers.** 99% against a 90% target means it is wider than it needs to
@@ -308,20 +313,24 @@ Median across 8 independent test streams:
 
 | policy | incidents actioned | false incidents | analyst minutes | merchant cost |
 |---|---:|---:|---:|---:|
-| always allow | 0 | 0 | 0 | ₹29,200 |
-| always hold | 6 | **5** | 72 | ₹36,924 |
-| event-by-event thresholding | 1 | 0 | **205.8** | ₹3,736 |
-| **causal policy** *(forecast only)* | **1** | **0** | **12** | **₹1,884** |
-| oracle policy *(upper bound)* | 1 | 0 | 12 | ₹1,884 |
+| always allow | 0 | 0 | 0.0 | ₹60,444 |
+| always hold | 20 | 16 | 234.0 | ₹121,644 |
+| event-by-event thresholding | 2 | 1 | 214.8 | ₹19,167 |
+| **causal policy** *(forecast only)* | 2 | 1 | 12.0 | ₹16,240 |
+| oracle policy *(upper bound)* | 2 | 0 | 12.0 | ₹8,691 |
 
-**Action regret vs the oracle: ₹0 — the causal policy chooses the same action on 11 / 11
-incidents.** Despite a median forecast error of 222 attempts, the decision is unchanged,
-because the cost gaps between actions are large relative to that error.
+**Not knowing the future costs money, and the amount is measured.** On the demo stream the
+causal policy matches the oracle's action on **14 of 17** incidents, for a regret of
+**₹1,560**. Across the eight streams above, the median gap between the two rows is
+**₹7,548** — the causal policy also escalates one false incident per stream that the oracle,
+knowing the labels, does not.
 
-That is the honest reading, and it comes with a caveat: on this distribution incidents are
-either clearly large or clearly singleton, so the decision is not close. A mix with more
-mid-sized incidents would expose non-zero regret, and the regret metric is reported so that
-would show rather than hide.
+An earlier version of this README reported regret of ₹0 on 11 / 11 incidents, with the
+caveat that *"a mix with more mid-sized incidents would expose non-zero regret."* Correcting
+a defect in the campaign generator — devices, IPs and BIN ranges were being rotated in
+lockstep, so a campaign fragmented into disjoint cliques instead of forming one connected
+component — produced exactly that mix, and the regret appeared. The caveat was right and is
+now a number.
 
 When the forecast interval is wide relative to its own median, the policy **escalates to
 analyst review rather than automating** on a number the model does not stand behind.
@@ -664,6 +673,25 @@ touched, so it was not leakage in the usual sense — but it let each split rede
 score of `1.0` meant, so a "frozen" threshold referred to a different absolute quantity on
 each one. The conclusion drawn from it was wrong, in the direction that flattered this
 project.
+
+**7 · Two concurrent rings became one blob — and a fourth simulation defect behind it.**
+Testing what happens when a merchant is attacked by two independent campaigns at once, the
+incident layer merged them into a single 597-attempt incident: one action for two attackers,
+and an evidence card describing neither. The bridge was **email domain** — five distinct
+values across 607 alerts, so every alert shared one with every other. Alerts are now linked
+only through values covering under 2% of the stream, measured against the whole stream
+rather than the alerted subset, where the domains had landed just under the cap and the
+merge survived the first fix.
+
+Applying that guard then over-fragmented the campaign into sixty disjoint cliques of five,
+which exposed the real cause: the generator assigned devices, IPs and BIN ranges with the
+**same** round-robin order, so all three partitioned a campaign identically and the relations
+never cross-cut. A real attacker does not rotate infrastructure in lockstep. With independent
+assignment the campaign forms one connected component for the right reason, and two
+concurrent rings stay two clean incidents.
+
+That fix moved a headline: action regret against the oracle had been ₹0 on 11/11 incidents,
+with a caveat that a mid-sized mix would expose non-zero regret. It now does.
 
 **6 · A simulation that made the problem easy, and the three bugs hiding behind it.** The
 background ran at **9 events per hour** across thirty days. An injected campaign was then

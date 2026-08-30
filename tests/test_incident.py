@@ -152,3 +152,58 @@ def test_reliability_is_measured_at_incident_level(stream):
     rel = incident_reliability(incs, risk.predict(incs))
     assert set(rel.columns) == {"bin_mid", "predicted", "observed", "count"}
     assert rel["count"].sum() == len(incs)
+
+
+def _two_ring_stream(seed=1, n=300, gap_s=600.0):
+    """One merchant, two independent campaigns overlapping in time."""
+    bg = load_background(path=None, n_rows=4000, seed=seed)
+    t0 = float(bg["ts"].iloc[400])
+    specs = [CampaignSpec(n_attempts=n, k_devices=30, k_ips=30, n_bins=30,
+                          duration_s=3600.0, start_ts=t0, camouflage=1.0),
+             CampaignSpec(n_attempts=n, k_devices=30, k_ips=30, n_bins=30,
+                          duration_s=3600.0, start_ts=t0 + gap_s, camouflage=1.0)]
+    ev = inject(bg, specs, seed=seed)
+    return ev, ev["label"].to_numpy().astype(float)
+
+
+def test_two_concurrent_rings_become_two_incidents():
+    """A merchant attacked by two rings needs two actionable incidents, not one
+    merged blob. Before the linking guard they merged into a single 597-attempt
+    incident bridged entirely by shared email domain."""
+    ev, sc = _two_ring_stream()
+    big = [i for i in build_incidents(ev, sc, 0.5) if i.n_attempts >= 50]
+    assert len(big) == 2, [i.n_attempts for i in big]
+
+
+def test_each_incident_belongs_to_exactly_one_campaign():
+    """Isolation has to be clean: an incident mixing two rings would produce
+    one action and an evidence card describing neither."""
+    ev, sc = _two_ring_stream()
+    for inc in build_incidents(ev, sc, 0.5):
+        if inc.n_attempts < 50:
+            continue
+        camps = ev.iloc[inc.rows]["campaign_id"].dropna().unique()
+        assert len(camps) == 1, f"{inc.incident_id} mixes {list(camps)}"
+
+
+def test_a_ubiquitous_entity_cannot_link_an_incident():
+    """Sharing gmail.com is not evidence, and the guard measures a value's
+    share of the WHOLE stream because that is what makes it common.
+
+    Both rings draw from the same handful of email domains, and one covers over
+    half the stream. Linking through it would collapse them into a single
+    incident, so two surviving separately is the property under test.
+    """
+    ev, sc = _two_ring_stream()
+    top = ev["email_domain"].value_counts().iloc[0] / len(ev)
+    assert top > 0.2, "fixture should contain a dominant email domain"
+    assert len(build_incidents(ev, sc, 0.5)) == 2
+
+
+def test_lifting_the_link_guard_reproduces_the_merge():
+    """The guard is load-bearing: without it the two rings merge, which is the
+    defect this whole mechanism exists to prevent."""
+    ev, sc = _two_ring_stream()
+    merged = build_incidents(ev, sc, 0.5, max_link_share=1.0)
+    assert len(merged) == 1
+    assert merged[0].n_attempts == 600

@@ -94,13 +94,35 @@ class _Union:
             self.p[rb] = ra
 
 
-def build_incidents(events: pd.DataFrame, scores: np.ndarray, threshold: float,
-                    link_window_s: float = 900.0) -> list[Incident]:
-    """Group alerted events that share an entity within `link_window_s`.
+# An entity value covering more than this share of the WHOLE stream is not
+# evidence that two alerts belong together. gmail.com covers half of all
+# traffic and says nothing; a device fingerprint on 0.03% of it says a great
+# deal. Measured against the full stream rather than against the alerts,
+# because that is what makes a value common — an earlier version used the
+# alerted subset and the email domains landed just under the cap, so the merge
+# survived.
+#
+# Applied per VALUE rather than per relation, so a popular issuer BIN is
+# excluded while a campaign's minted BIN still links, and so the rule keeps
+# working on a future dataset with a low-cardinality field this code has never
+# seen.
+#
+# Without it, two concurrent campaigns with entirely separate infrastructure
+# merged into one 597-attempt blob bridged solely by email domain: a merchant
+# under attack from two rings would get one incident and one action for both.
+MAX_LINK_SHARE = 0.02
 
-    Only alerted events are grouped. Linking every event that shares a gmail
-    address would merge the entire stream into one incident; the point is to
-    consolidate what an analyst would otherwise see as separate alerts.
+
+def build_incidents(events: pd.DataFrame, scores: np.ndarray, threshold: float,
+                    link_window_s: float = 900.0,
+                    max_link_share: float = MAX_LINK_SHARE) -> list[Incident]:
+    """Group alerted events that share a DISCRIMINATIVE entity within a window.
+
+    Only alerted events are grouped, and only through entity values specific
+    enough to be evidence. The relation set used for grouping is therefore
+    narrower than the one used for scoring: a shared email domain is weak
+    evidence that composes usefully inside the model, but it cannot support the
+    claim that two alerts are the same incident.
     """
     scores = np.asarray(scores, dtype=float)
     fired = np.flatnonzero(scores >= threshold)
@@ -113,8 +135,12 @@ def build_incidents(events: pd.DataFrame, scores: np.ndarray, threshold: float,
     uf = _Union(fired.size)
 
     sub = events.iloc[fired]
+    cap = max(len(events) * max_link_share, 1.0)
     for rel in RELATIONS:
-        for idx in sub.groupby(rel, sort=False).indices.values():
+        overall = events[rel].value_counts()
+        for val, idx in sub.groupby(rel, sort=False).indices.items():
+            if overall.get(val, 0) > cap:
+                continue          # too common in the stream to be evidence
             rows = fired[np.sort(idx)]
             for a, b in zip(rows, rows[1:]):
                 if ts[b] - ts[a] <= link_window_s:
