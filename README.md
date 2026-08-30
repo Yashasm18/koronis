@@ -192,7 +192,12 @@ happens per event in deployment.
 
 | p50 | p95 | p99 | mean | throughput |
 |---:|---:|---:|---:|---:|
-| **1.78 ms** | **3.85 ms** | 6.73 ms | 2.10 ms | ~476 events/sec |
+| **0.99 ms** | **1.22 ms** | 1.40 ms | 1.00 ms | ~998 events/sec |
+
+An earlier run of this benchmark reported p50 1.78 ms and p95 3.85 ms. That measurement was
+taken while a ten-trial experiment was running in the background on the same machine and is
+discarded: a latency benchmark competing with a training job measures the machine, not the
+code. The figures above come from an otherwise idle run.
 
 Entity buckets expire on the window, so memory is bounded by window occupancy rather than
 stream length — a test holds that too. Reproduce with `python -m koronis.cli benchmark`.
@@ -370,12 +375,12 @@ traffic varies against itself — so nothing about the shifted profiles informs 
 
 | profile | median PSI | flagged | largest shift | what actually changed |
 |---|---:|---:|---|---|
-| base | 0.148 | 1 / 3 | reuse_bin | — |
-| `subscription` | **0.592** | 3 / 3 | **reuse_device** | ✓ device reuse |
-| `marketplace` | **0.931** | 3 / 3 | **reuse_ip** | ✓ entity diffusion |
-| `flash_sale` | **0.404** | 3 / 3 | **log_interarrival** | ✓ the burst |
+| base | 0.141 | 0 / 3 | reuse_bin | — |
+| `subscription` | **0.584** | 3 / 3 | **reuse_device** | ✓ device reuse |
+| `marketplace` | **0.924** | 3 / 3 | **reuse_ip** | ✓ entity diffusion |
+| `flash_sale` | **0.399** | 3 / 3 | **log_interarrival** | ✓ the burst |
 
-Cut-off: **0.154**. Every shifted profile is flagged, and in each case the feature it names
+Cut-off: **0.162**. Every shifted profile is flagged, and in each case the feature it names
 is one the profile genuinely alters — it reports *how* the traffic differs, not merely that
 it does.
 

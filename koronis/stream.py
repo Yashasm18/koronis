@@ -15,7 +15,6 @@ network calls, touches no payment gateway, and handles no real card data.
 """
 from collections import defaultdict, deque
 
-import numpy as np
 import pandas as pd
 import torch
 
@@ -47,7 +46,6 @@ class StreamingKoronis:
         self._index: dict[str, dict[str, deque]] = {
             rel: defaultdict(deque) for rel in RELATIONS
         }
-        self._n_seen = 0
 
     # ------------------------------------------------------------------ core
 
@@ -76,7 +74,6 @@ class StreamingKoronis:
         self._ts.append(ts)
         self._alerted.append(alert)
         self._remember(event, idx, ts)
-        self._n_seen += 1
 
         linked = sum(len(n) for n in neighbours)
         return {
@@ -132,9 +129,6 @@ class StreamingKoronis:
             "seconds_since_first_alert": round(ts - first, 3),
         }
 
-    @property
-    def events_seen(self) -> int:
-        return self._n_seen
 
 
 def replay(events: pd.DataFrame, detector: KoronisDetector,

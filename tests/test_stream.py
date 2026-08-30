@@ -1,5 +1,4 @@
 import numpy as np
-import pandas as pd
 import pytest
 
 from koronis.data.background import load_background

@@ -1,9 +1,13 @@
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
 
 from .schema import EVENT_COLUMNS
+
+if TYPE_CHECKING:                      # avoids a circular import at runtime
+    from ..profiles import Profile
 
 
 # Traffic density matters more than volume for a graph detector. Spreading the

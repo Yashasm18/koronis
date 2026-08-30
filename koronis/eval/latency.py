@@ -87,18 +87,3 @@ def latency_curve(events: pd.DataFrame, scores: np.ndarray,
                                              campaign_id),
         })
     return pd.DataFrame(rows)
-
-
-def alert_volume_threshold(calibration_scores: np.ndarray,
-                           quantile: float = 0.99) -> float:
-    """An equal-alert-volume operating point, derived from CALIBRATION only.
-
-    Useful for comparing detectors at matched alert budgets rather than at
-    each one's own cost optimum. It must be computed once, on calibration
-    data, and then frozen - deriving it from the test stream would let the
-    operating point drift with whatever the detector happens to see.
-    """
-    calibration_scores = np.asarray(calibration_scores, dtype=float)
-    if calibration_scores.size == 0:
-        return float("inf")
-    return float(np.quantile(calibration_scores, quantile))

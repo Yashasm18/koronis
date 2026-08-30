@@ -1,7 +1,6 @@
 import numpy as np
 import pandas as pd
 
-from ..data.schema import RELATIONS
 
 # Entity types a real rules engine would run counters on.
 #

@@ -137,7 +137,7 @@ def test_causal_policy_matches_oracle_given_a_perfect_forecast(stream):
     assert all(d["action"] == d["oracle_action"] for d in detail)
 
 
-def test_incident_policy_cuts_analyst_workload(stream):
+def test_causal_policy_cuts_analyst_workload(stream):
     ev, sc = stream
     summary, _ = evaluate_policies(ev, sc, 0.5, _OracleRisk(), _PerfectForecast())
     mins = dict(zip(summary["policy"], summary["analyst_minutes"]))

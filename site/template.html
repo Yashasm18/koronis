@@ -299,6 +299,26 @@ td.rng{color:var(--ink-3);font-size:10.5px}
         incidents and are weakly determined</b>.</p>
       </div>
     </div>
+    <div class="panel">
+      <div class="ph"><h2>Traffic-profile transfer stress test</h2>
+        <span class="hint" id="drift-hint"></span></div>
+      <div class="tbl"><table id="t-drift"></table></div>
+      <div class="prose" style="padding-top:0">
+        <p><b>Synthetic merchant shapes, not real merchants.</b> Everything is fitted on the
+        base profile and frozen before any shifted traffic is scored. Each shifted profile is
+        flagged, and the feature named is one that profile genuinely alters.</p>
+        <p><b>Status: experimental decision support, not a safety control.</b> The false-flag
+        rate on held-out <i>base</i> traffic is too high to depend on, and the reason is
+        measurable — the signal substantially tracks campaign shape rather than merchant
+        shift:</p>
+      </div>
+      <div class="tbl"><table id="t-confound"></table></div>
+      <div class="prose" style="padding-top:0">
+        <p>Live, "different merchant" and "under attack" cannot be separated before deciding.
+        The standard fix — monitoring drift on a far slower timescale than detection — is not
+        implemented here.</p>
+      </div>
+    </div>
     <div class="grid3">
       <div class="panel">
         <div class="ph"><h2>Per-event inference</h2><span class="hint" id="bench-hint"></span></div>
@@ -344,6 +364,12 @@ td.rng{color:var(--ink-3);font-size:10.5px}
         <p>Rupee amounts are declared constants, not measurements, and they assume detection
         halts a campaign immediately. Read them as the <b>cost of latency</b>, not guaranteed
         savings.</p>
+        <h3>The drift guardrail is experimental</h3>
+        <p>Koronis can detect that live traffic sits outside its calibration distribution and
+        lower automation, routing an incident to review instead. On held-out base traffic it
+        raises that flag too often to be depended on, and the reason is measurable: the signal
+        partly tracks <b>campaign shape</b> rather than merchant shift. It is decision support
+        that can ask for a human, not a control anything should rely on.</p>
         <h3>Actions are simulated</h3>
         <p>Every recommended action is decision support in a modelled merchant workflow.
         Nothing blocks a payment, calls a gateway or touches live infrastructure. The cost
@@ -446,8 +472,30 @@ table(el("t-policy"), [
   {h:"false incidents", f:function(r){return r.false_incidents;}},
   {h:"analyst minutes", f:function(r){return Number(r.analyst_minutes).toFixed(1);}},
   {h:"merchant cost", f:function(r){return "₹"+num(Math.round(r.merchant_cost_inr));}},
-], POL.across_streams, {k:"policy", v:"incident_policy"});
+], POL.across_streams, {k:"policy", v:"causal_policy"});
 el("policy-hint").textContent = "median across "+POL.n_streams+" independent test streams";
+
+var DR = D.drift;
+table(el("t-drift"), [
+  {h:"profile", f:function(r){return r.profile;}},
+  {h:"median PSI", f:function(r){return f3(r.psi);}},
+  {h:"flagged", f:function(r){return Math.round(r.drifted*100)+"%";}},
+  {h:"false auto-actions avoided", f:function(r){return r.false_avoided;}},
+  {h:"true responses downgraded", f:function(r){return r.true_downgraded;}},
+  {h:"analyst min added", f:function(r){return Number(r.minutes_added).toFixed(0);}},
+], DR.per_profile);
+el("drift-hint").textContent = "cut-off PSI "+DR.threshold_psi.toFixed(3)+
+  " from "+DR.n_calibration_streams+" base streams";
+
+var CF = DR.confound_diagnostic;
+table(el("t-confound"), [
+  {h:"base traffic, merchant held fixed", f:function(r){return r.k;}},
+  {h:"false-flag rate", f:function(r){return (r.v*100).toFixed(1)+"%";}},
+], [
+  {k:"campaign matches calibration (k=30)", v:CF.campaign_matches_calibration_k30},
+  {k:"background only, no campaign", v:CF.background_only_no_campaign},
+  {k:"campaign of unseen morphology (k=60)", v:CF.campaign_unseen_morphology_k60},
+]);
 
 var FC = POL.forecast;
 table(el("t-fc"), [

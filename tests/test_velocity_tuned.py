@@ -1,5 +1,3 @@
-import numpy as np
-
 from koronis.data.background import load_background
 from koronis.data.campaigns import inject
 from koronis.data.schema import CampaignSpec
