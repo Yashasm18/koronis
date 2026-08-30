@@ -17,6 +17,10 @@ Its central claim is not that the model beats its baselines. It is a **character
 when detection is possible at all**, stated as arithmetic and then tested: on a 16-point
 grid, the measured blindness boundary matched the predicted one **16 / 16**.
 
+**▶ Live demo: [yashasm18.github.io/koronis](https://yashasm18.github.io/koronis/)** — replay a
+held-out campaign event by event, then read the evaluation and limitations beside it. The page
+is generated from `results/` at build time, so it cannot drift out of step with the experiment.
+
 ---
 
 > **Why "Koronis"?** The Koronis family is a group of asteroids that share orbital
@@ -584,21 +588,6 @@ grep -rnE "^(import|from) (requests|urllib|socket|http|aiohttp|subprocess)" koro
 
 The complete third-party surface is `numpy`, `pandas`, `scikit-learn`, `lightgbm`, `torch`.
 
-## Live demo
-
-**[yashasm18.github.io/koronis](https://yashasm18.github.io/koronis/)** — replay a held-out
-campaign event by event, watch the evidence accumulate, and read the evaluation and
-limitations alongside it.
-
-The page is generated from the result files, not written by hand:
-
-```bash
-python site/build.py       # results/*.json|csv  ->  docs/index.html
-```
-
-Every figure it displays is embedded from `results/` at build time, so it cannot drift out
-of step with the experiment.
-
 ## Run it
 
 ```bash
@@ -615,7 +604,14 @@ python -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/python -m koronis.cli drift         # traffic-profile transfer stress test
 ```
 
-Results are written to `results/*.csv`. Every number in this README comes from those files.
+Results are written to `results/*.csv` and `results/*.json`. **Every number in this README
+comes from those files**, and so does every number on the demo site:
+
+```bash
+python site/build.py       # results/  ->  docs/index.html
+```
+
+The page is generated, never hand-edited, so it cannot drift out of step with the experiment.
 
 Optional — real background traffic (needs a Kaggle account and accepting the competition
 rules):
