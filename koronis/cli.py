@@ -6,6 +6,7 @@
     python -m koronis.cli seeds       # repeat across seeds, report intervals
     python -m koronis.cli replay      # causal event-by-event replay -> JSON
     python -m koronis.cli benchmark   # p50/p95 per-event inference latency
+    python -m koronis.cli mechanism   # which mechanism actually carries the signal
 """
 import json
 import sys
@@ -258,6 +259,74 @@ def seeds(n_seeds: int = 10) -> pd.DataFrame:
     return out
 
 
+MECHANISM_VARIANTS = {
+    "koronis_full": dict(use_edges=True, use_approved=True),
+    "no_edges": dict(use_edges=False, use_approved=True),
+    "no_approved": dict(use_edges=True, use_approved=False),
+    "no_edges_no_approved": dict(use_edges=False, use_approved=False),
+}
+
+
+def mechanism(n_seeds: int = 5) -> pd.DataFrame:
+    """Which mechanism actually carries the signal: graph or event features?
+
+    The full model raises its first campaign alert on the campaign's opening
+    attempt, which has no prior campaign neighbours. That is worth explaining
+    rather than celebrating: with no coordinated history to read, any signal at
+    that instant must come from the event itself - and the only per-event
+    feature that separates a camouflaged campaign is the authorisation outcome.
+
+    Note also what an early alert can and cannot buy. The outcome of an attempt
+    is observed only after it is submitted, so no detector can prevent the
+    attempt it learns from. The value is in stopping the ones that follow.
+
+    Each variant is trained and evaluated under the same three-split protocol.
+    """
+    rows = []
+    for seed in range(n_seeds):
+        train = _train_set(seed * 10)
+        calib = _calibration_set(seed * 10 + 2)
+        test = _dataset(seed * 10 + 1, TEST_K, TEST_CAMO)
+        y, y_cal = test["label"].to_numpy(), calib["label"].to_numpy()
+
+        for name, kw in MECHANISM_VARIANTS.items():
+            m = KoronisDetector(seed=seed, window_s=WINDOW_S, **kw)
+            m.fit(train, epochs=60)
+            thr, _ = cost_optimal_threshold(_raw(m.score_events(calib)), y_cal,
+                                            COST_PER_ATTEMPT_INR,
+                                            COST_PER_FALSE_BLOCK_INR)
+            sc = _raw(m.score_events(test))
+            fired = sc >= thr
+            dt = detection_times(test, sc, thr)["camp_0"]
+            rows.append({
+                "seed": seed, "variant": name,
+                "pr_auc": round(float(average_precision_score(y, sc)), 4),
+                "precision": round(float(precision_score(y, fired, zero_division=0)), 4),
+                "recall": round(float(recall_score(y, fired, zero_division=0)), 4),
+                "false_positives": int((fired & (y == 0)).sum()),
+                "detect_s": None if dt is None else round(dt, 1),
+            })
+
+    allr = pd.DataFrame(rows)
+    RESULTS.mkdir(exist_ok=True)
+    allr.to_csv(RESULTS / "mechanism_raw.csv", index=False)
+
+    out = []
+    for name, g in allr.groupby("variant", sort=False):
+        r = {"variant": name, "n_trials": n_seeds}
+        for m_ in ("pr_auc", "precision", "recall", "false_positives", "detect_s"):
+            v = pd.to_numeric(g[m_], errors="coerce").dropna()
+            r[f"{m_}_median"] = round(float(v.median()), 4) if not v.empty else np.nan
+        r["detected_rate"] = round(float(g["detect_s"].notna().mean()), 2)
+        out.append(r)
+    summary = pd.DataFrame(out)
+    summary.to_csv(RESULTS / "mechanism.csv", index=False)
+
+    print(f"\nmechanism ablation, {n_seeds} trials, medians\n")
+    print(summary.to_string(index=False))
+    return summary
+
+
 def frontier() -> pd.DataFrame:
     from .eval.frontier import sweep
     df = sweep(n_values=[200, 400, 800, 1600], k_values=[2, 10, 50, 200],
@@ -490,4 +559,5 @@ def benchmark(n_warmup: int = 200) -> dict:
 if __name__ == "__main__":
     cmd = sys.argv[1] if len(sys.argv) > 1 else "ablation"
     {"ablation": ablation, "frontier": frontier, "latency": latency,
-     "seeds": seeds, "replay": replay, "benchmark": benchmark}[cmd]()
+     "seeds": seeds, "replay": replay, "benchmark": benchmark,
+     "mechanism": mechanism}[cmd]()

@@ -2,7 +2,7 @@
 
 **Detecting distributed card-testing campaigns that per-entity velocity rules cannot see — at any threshold.**
 
-[![tests](https://img.shields.io/badge/tests-56%20passing-2ea44f)](tests/)
+[![tests](https://img.shields.io/badge/tests-59%20passing-2ea44f)](tests/)
 [![python](https://img.shields.io/badge/python-3.11%2B-3776ab)](https://www.python.org/)
 [![graph libs](https://img.shields.io/badge/graph%20libraries-none-8a3ffc)](koronis/models/layers.py)
 [![track](https://img.shields.io/badge/Razorpay%20Buildathon-Track%2002%20·%20AI%20Risk%20Manager-0c2451)](https://razorpay.com/buildathon/)
@@ -145,7 +145,8 @@ suite now records both sides, since counting still works on a concentrated burst
 *So the network is doing the work, and it is worth being precise about which work.* The
 structure carries the signal only once you weight relations, gate camouflage edges, and
 learn what a suspicious neighbourhood looks like against a noisy background. Counting the
-neighbourhood is not enough.
+neighbourhood is not enough — and neither is the graph alone, as the mechanism ablation
+below shows.
 
 ### Detection latency
 
@@ -196,9 +197,51 @@ happens per event in deployment.
 Entity buckets expire on the window, so memory is bounded by window occupancy rather than
 stream length — a test holds that too. Reproduce with `python -m koronis.cli benchmark`.
 
-On the held-out stream, Koronis raises its first campaign alert at **t = 0.0 s** — the campaign's opening attempt already crosses the frozen threshold — while the
-tuned velocity engine never alerts on the campaign at all. `results/replay.json` carries the
-full per-event trace.
+On the held-out stream, Koronis alerts on the campaign's **opening attempt**, while the
+tuned velocity engine never alerts on it at all. `results/replay.json` carries the full
+per-event trace.
+
+**That opening alert is not coordination, and it prevents nothing.** The first attempt has
+no prior campaign neighbours — there is no campaign yet — so the evidence at that instant is
+per-event, and it is the authorisation outcome. An outcome is observed only *after* an
+attempt is submitted, so no detector can prevent the attempt it learns from. What an early
+alert buys is the ability to stop everything that follows. The next section measures exactly
+how much of the result comes from each mechanism.
+
+## Which mechanism carries the signal
+
+The full model alerting on the opening attempt demanded an explanation rather than a
+victory lap, so each mechanism was removed in turn under the same three-split protocol
+(5 trials, medians). `python -m koronis.cli mechanism`.
+
+| variant | PR-AUC | precision | recall | false positives | first alert |
+|---|---:|---:|---:|---:|---:|
+| **`koronis_full`** | **0.987** | **0.936** | 0.978 | **27** | 0.0 s |
+| `no_edges` — event features only | 0.334 | 0.454 | 0.968 | 464 | 0.0 s |
+| `no_approved` — graph only | 0.712 | 0.734 | 0.850 | 106 | **25.8 s** |
+| `no_edges` + `no_approved` | 0.061 | 0.000 | 0.000 | 2 | **never** |
+
+**Both mechanisms matter, and they do different jobs.**
+
+*The authorisation outcome buys earliness.* Strip the edges and the model still alerts at
+t = 0 — but at 0.454 precision and **464 false positives**. Early and unusable.
+
+*The graph buys precision.* Strip `approved` and the first alert moves from 0.0 s to
+**25.8 s**, because with no per-event signal the model must wait for coordination to
+accumulate. But false positives fall from 464 to 106, and precision rises to 0.734.
+
+*Together they are worth more than either.* 27 false positives at 0.936 precision — a **17×
+reduction** over event-features-alone. And with both removed the model has nothing left:
+PR-AUC 0.061, never fires. There is no third source of signal hiding in the features.
+
+So the honest statement is: **transaction outcome gives early, weak evidence; temporal graph
+structure converts it into a high-precision campaign alert.** Neither half is the product.
+
+`tests/test_first_event.py` pins the structural claim: the opening attempt has zero
+campaign-derived links in every relation, and cannot acquire any, because devices, IPs and
+BINs are minted fresh per campaign. It *can* link to legitimate history through a shared
+email domain — evidence that carries no campaign information — and campaign links only
+begin to accumulate after it.
 
 ## How it works
 
@@ -312,6 +355,7 @@ python -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/python -m koronis.cli seeds         # 10 trials, median + across-run range
 .venv/bin/python -m koronis.cli replay        # causal event-by-event replay -> JSON
 .venv/bin/python -m koronis.cli benchmark     # p50/p95 per-event inference latency
+.venv/bin/python -m koronis.cli mechanism     # which mechanism carries the signal
 ```
 
 Results are written to `results/*.csv`. Every number in this README comes from those files.

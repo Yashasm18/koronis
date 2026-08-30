@@ -9,7 +9,14 @@ from .layers import RelationalLayer
 from .loss import expected_cost_loss
 
 
-def node_features(events: pd.DataFrame) -> np.ndarray:
+# The authorisation outcome is observed only AFTER an attempt is submitted, so
+# it can never prevent the attempt it describes. Its value is in what it says
+# about the attempts that follow. Kept as an explicit switch so its
+# contribution can be measured rather than assumed.
+FEATURE_NAMES = ["log_amount", "is_micro", "approved", "hour", "email_free", "bias"]
+
+
+def node_features(events: pd.DataFrame, use_approved: bool = True) -> np.ndarray:
     """Per-event features only.
 
     Deliberately identical in spirit to the GBDT baseline's features: all
@@ -26,6 +33,8 @@ def node_features(events: pd.DataFrame) -> np.ndarray:
             .to_numpy().astype(np.float64),
         np.ones(len(events)),
     ], axis=1)
+    if not use_approved:
+        f[:, 2] = 0.0          # zero the column, keeping the input width fixed
     return f.astype(np.float32)
 
 
@@ -53,13 +62,22 @@ class KoronisDetector:
     """
 
     def __init__(self, hidden: int = 32, layers: int = 2,
-                 window_s: float = 3600.0, seed: int = 0):
+                 window_s: float = 3600.0, seed: int = 0,
+                 use_approved: bool = True, use_edges: bool = True):
         self.hidden, self.n_layers = hidden, layers
         self.window_s, self.seed = window_s, seed
+        # Ablation switches. `use_edges=False` strips every graph edge, leaving
+        # the self-transformation - which isolates how much of the result comes
+        # from per-event features rather than coordination. `use_approved=False`
+        # zeroes the authorisation outcome, isolating the reverse.
+        self.use_approved, self.use_edges = use_approved, use_edges
         self.net: _Net | None = None
 
     def _tensors(self, events: pd.DataFrame):
-        x = torch.from_numpy(node_features(events))
+        x = torch.from_numpy(node_features(events, self.use_approved))
+        if not self.use_edges:
+            empty = torch.zeros((2, 0), dtype=torch.int64)
+            return x, [empty for _ in RELATIONS]
         edges = build_edges(events, window_s=self.window_s)
         return x, [torch.from_numpy(edges[r]) for r in RELATIONS]
 
