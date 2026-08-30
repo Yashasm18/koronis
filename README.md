@@ -2,7 +2,7 @@
 
 **Detecting distributed card-testing campaigns that per-entity velocity rules cannot see — at any threshold.**
 
-[![tests](https://img.shields.io/badge/tests-55%20passing-2ea44f)](tests/)
+[![tests](https://img.shields.io/badge/tests-56%20passing-2ea44f)](tests/)
 [![python](https://img.shields.io/badge/python-3.11%2B-3776ab)](https://www.python.org/)
 [![graph libs](https://img.shields.io/badge/graph%20libraries-none-8a3ffc)](koronis/models/layers.py)
 [![track](https://img.shields.io/badge/Razorpay%20Buildathon-Track%2002%20·%20AI%20Risk%20Manager-0c2451)](https://razorpay.com/buildathon/)
@@ -114,36 +114,38 @@ redefine what a score means, hollowing out the claim that the threshold was froz
 
 | detector | PR-AUC | precision | recall | false positives | **detected** |
 |---|---:|---:|---:|---:|---:|
-| `velocity_tuned` | 0.062 `[0.062, 0.062]` | 0.000 | 0.000 | 35 `[17, 71]` | **0 / 10** |
-| `decline_burst` *(no graph, no learning)* | 0.536 `[0.518, 0.568]` | 0.718 | 0.993 | 156 `[124, 181]` | 10 / 10 |
-| `shared_entity` *(graph, no learning)* | 0.894 `[0.888, 0.904]` | 0.873 | 0.856 | 50 `[35, 84]` | 10 / 10 |
-| `gbdt_per_txn` | 0.674 `[0.079, 0.913]` | 0.639 `[0.000, 0.850]` | 0.639 | 76 `[47, 215]` | **6 / 10** |
-| **`koronis_graph`** | **0.996** `[0.992, 0.999]` | **0.958** `[0.887, 0.968]` | **0.980** | **18** `[13, 50]` | **10 / 10** |
+| `velocity_tuned` | 0.062 `[0.062, 0.062]` | 0.000 | 0.000 | 44 | **0 / 10** |
+| `decline_burst` *(no graph, no learning)* | 0.221 `[0.212, 0.234]` | 0.234 | 0.013 | 16 | 6 / 10 |
+| `shared_entity` *(graph, no learning)* | 0.055 `[0.054, 0.056]` | 0.000 | 0.000 | 35 | **0 / 10** |
+| `gbdt_per_txn` | 0.319 `[0.289, 0.339]` | 0.398 | 0.811 | **490** `[456, 540]` | 10 / 10 |
+| **`koronis_graph`** | **0.988** `[0.984, 0.992]` | **0.947** `[0.931, 0.963]` | **0.970** | **22** `[15, 29]` | **10 / 10** |
 
 Campaign exposure if never stopped: ₹29,200. Per-trial values in `results/seeds_raw.csv`.
 Reproduce with `python -m koronis.cli seeds`.
 
 **What this table actually says.**
 
-*Threshold rules do not degrade — they stop working.* Velocity precision is 0.000 on all
-ten trials and it never once detects the campaign. That is not an empirical tendency, it is
-Claim 1: at `k = 60` against `τ = 9`, no threshold can fire.
+*Threshold rules do not degrade — they stop working.* Velocity precision is 0.000 on all ten
+trials and it never once detects the campaign. That is not an empirical tendency, it is
+Claim 1: at `k = 60` against a binding `τ = 8`, no counter can trip.
 
-*The per-transaction model is not weaker so much as unreliable.* Its PR-AUC interval spans
-`[0.079, 0.913]` and it detects the campaign in only **6 of 10 trials**. On the other four
-it fails completely. A single-seed report would have hidden this entirely — and the first
-seed we reported happened to be its best case.
+*The per-transaction model finds the campaign and drowns the analyst.* It detects every
+time and recalls 81% of attempts — at **490 false positives** against Koronis's **22**, a
+**22× difference**. Recall was never the hard part of this problem; precision at a usable
+alert volume is.
 
-*Simple graph counting is a strong baseline, and the network's job is narrower than it
-first appears.* Plain inverse-frequency co-occurrence (`shared_entity`, no learning at all)
-reaches PR-AUC **0.894** and detects every time. Koronis does not beat it by finding
-coordination the counting misses. It beats it by making that signal **operational**:
-**2.8× fewer false positives** (18 vs 50), higher recall (0.980 vs 0.856), and — see below —
-detection **ten times sooner**.
+*Raw graph counting is defeated by dense traffic.* Plain inverse-frequency co-occurrence
+(`shared_entity`) reaches only **0.055** PR-AUC and never fires. An earlier version of this
+README reported it at 0.894 and called it a strong baseline — that was measured on
+background traffic of 9 events/hour, where a campaign was 97% of everything in its own
+window. At a realistic 1,600 events/hour, legitimate devices, IPs and BINs co-occur
+constantly and counting alone has nothing to lock onto. The finding is retracted; the test
+suite now records both sides, since counting still works on a concentrated burst.
 
-That is the honest claim, and it is a stronger one than "we built a GNN and it scored
-0.996". The structure carries the signal; the network makes it something you could
-actually deploy.
+*So the network is doing the work, and it is worth being precise about which work.* The
+structure carries the signal only once you weight relations, gate camouflage edges, and
+learn what a suspicious neighbourhood looks like against a noisy background. Counting the
+neighbourhood is not enough.
 
 ### Detection latency
 
@@ -156,16 +158,16 @@ differently tuned ones.
 | detector | t=60s | t=300s | t=600s |
 |---|---|---|---|
 | `velocity_tuned` | — not detected — | — not detected — | — not detected — |
-| `shared_entity` | — not detected — | — not detected — | P 0.86 / R 0.27 |
-| `decline_burst` | P 0.37 / R 0.70 | P 0.74 / R 0.92 | P 0.84 / R 0.96 |
-| `gbdt_per_txn` | P 0.43 / R 0.30 | P 0.76 / R 0.34 | P 0.92 / R 0.65 |
-| **`koronis_graph`** | **P 0.83 / R 0.50** | **P 0.97 / R 0.82** | **P 0.98 / R 0.89** |
+| `decline_burst` | — not detected — | — not detected — | — not detected — |
+| `shared_entity` | — not detected — | — not detected — | — not detected — |
+| `gbdt_per_txn` | P 0.19 / R 0.80 | P 0.39 / R 0.71 | P 0.48 / R 0.70 |
+| **`koronis_graph`** | **P 0.56 / R 1.00** | **P 0.82 / R 0.97** | **P 0.88 / R 0.97** |
 
-This is where the difference between *finding* the signal and *operationalising* it becomes
-concrete. Raw co-occurrence counting does find the campaign — but not until **600 seconds**,
-because it needs that long to accumulate enough shared-entity mass to cross its threshold.
-Koronis is already at 0.83 precision at **60 seconds**, a **10× latency difference** on the
-same underlying structure. When you detect determines how much you save.
+At one minute Koronis has recalled **every** campaign attempt so far at 0.56 precision,
+while the per-transaction model is at 0.19 — four in five of its alerts are wrong. None of
+the three learning-free detectors ever crosses its frozen threshold on this campaign. When
+you detect determines how much you save; how precisely you detect determines whether anyone
+can act on it.
 
 ## Streaming replay
 
@@ -189,12 +191,12 @@ happens per event in deployment.
 
 | p50 | p95 | p99 | mean | throughput |
 |---:|---:|---:|---:|---:|
-| **1.01 ms** | **2.56 ms** | 6.53 ms | 1.30 ms | ~770 events/sec |
+| **1.78 ms** | **3.85 ms** | 6.73 ms | 2.10 ms | ~476 events/sec |
 
 Entity buckets expire on the window, so memory is bounded by window occupancy rather than
 stream length — a test holds that too. Reproduce with `python -m koronis.cli benchmark`.
 
-On the held-out stream, Koronis raises its first campaign alert at **t = 14.8 s** while the
+On the held-out stream, Koronis raises its first campaign alert at **t = 0.0 s** — the campaign's opening attempt already crosses the frozen threshold — while the
 tuned velocity engine never alerts on the campaign at all. `results/replay.json` carries the
 full per-event trace.
 
@@ -363,16 +365,35 @@ across every entity, agreement went to **100%**.
 scores were each divided by their own maximum before thresholding. No test labels were
 touched, so it was not leakage in the usual sense — but it let each split redefine what a
 score of `1.0` meant, so a "frozen" threshold referred to a different absolute quantity on
-each one. It hurt the learning-free co-occurrence baseline worst, and this README
-previously reported that baseline as firing 2,246 false positives and being "unusable
-without learning". On raw scores it fires **50** and is a genuinely strong detector. The
-conclusion drawn from the bug was wrong, and it was wrong in the direction that flattered
-this project.
+each one. The conclusion drawn from it was wrong, in the direction that flattered this
+project.
 
-The general lesson from (1) and (4): *a property you assert in a test gets checked; a
-property you merely intend gets silently violated the moment an unrelated helper changes.*
-From (5): *a preprocessing step that seems neutral can decide your conclusion, and the
-dangerous ones are those whose bias points your way.*
+**6 · A simulation that made the problem easy, and the three bugs hiding behind it.** The
+background ran at **9 events per hour** across thirty days. An injected campaign was then
+97% of the traffic in its own window, and 96% of a campaign node's graph neighbours were
+other campaign events — so separating the cluster was close to trivial, for reasons that
+had nothing to do with the detector. Fixing the density to a realistic 1,600 events/hour
+uncovered three further defects that the thin traffic had masked:
+
+- every entity type shared one Zipf draw with a clamp, which piled the entire tail onto a
+  single id — **one device carried 42% of all traffic**, forcing the velocity threshold so
+  high that no campaign of any shape could trip it;
+- the frontier used `max(τ)` as its binding constraint, when a multi-entity engine fires if
+  *any* counter trips, so blindness actually needs `k ≥ n / min(τ)`;
+- the calibration split carried nine campaigns — a 37% positive rate, under which "alert on
+  every event" is genuinely cost-optimal, so the threshold search returned a detector that
+  fired on the entire stream.
+
+And it reversed a headline finding: raw co-occurrence counting, previously reported at
+0.894 PR-AUC and described as a strong baseline, collapses to **0.055** once legitimate
+traffic is dense enough to co-occur constantly.
+
+Three lessons, none of them about neural networks. From (1) and (4): *a property you assert
+in a test gets checked; a property you merely intend gets silently violated the moment an
+unrelated helper changes.* From (5): *a preprocessing step that seems neutral can decide
+your conclusion, and the dangerous ones are those whose bias points your way.* From (6):
+*when a result looks too clean, suspect the simulation before congratulating the model — an
+easy benchmark hides not one bug but a nest of them.*
 
 ---
 
