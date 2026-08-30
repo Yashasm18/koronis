@@ -75,6 +75,10 @@ class DriftMonitor:
         self.reference: pd.DataFrame | None = None
         self.threshold: float = float("inf")
         self.null_scores: list[float] = []
+        # Mean events-per-entity on base traffic. Reported so a demo can quote
+        # an OBSERVED reuse ratio rather than inferring one from a PSI value,
+        # which says how much a distribution moved, not by what factor.
+        self.base_reuse: dict[str, float] = {}
 
     def fit(self, base_streams: list[pd.DataFrame]) -> "DriftMonitor":
         sigs = [signature(s) for s in base_streams]
@@ -91,6 +95,8 @@ class DriftMonitor:
             null.append(psi(self.reference, sg)["overall"])
         self.null_scores = sorted(null)
         self.threshold = float(np.quantile(null, self.quantile)) if null else float("inf")
+        self.base_reuse = {c: float(self.reference[c].mean())
+                           for c in ("reuse_device", "reuse_ip", "reuse_bin")}
         return self
 
     def score(self, events: pd.DataFrame) -> dict:
@@ -101,6 +107,9 @@ class DriftMonitor:
     def check(self, events: pd.DataFrame) -> dict:
         s = self.score(events)
         worst = max((f for f in FEATURES), key=lambda f: s[f])
+        sig = signature(events)
+        reuse = {c: round(float(sig[c].mean()) / max(self.base_reuse.get(c, 1.0), 1e-9), 2)
+                 for c in ("reuse_device", "reuse_ip", "reuse_bin")}
         return {
             "psi": round(s["overall"], 4),
             "threshold": round(self.threshold, 4),
@@ -108,4 +117,7 @@ class DriftMonitor:
             "ratio": round(s["overall"] / max(self.threshold, 1e-9), 2),
             "largest_shift": worst,
             "per_feature": {f: round(s[f], 4) for f in FEATURES},
+            # Measured, not inferred: observed mean reuse divided by the base
+            # mean. Safe to quote in a demo; a PSI value is not.
+            "reuse_vs_base": reuse,
         }

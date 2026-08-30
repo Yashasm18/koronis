@@ -492,6 +492,11 @@ def drift() -> pd.DataFrame:
     train = _train_set(0)
     taus, gbdt, kor = _fit_all(train)
 
+    # Cut-off fitted on many independent base streams; the base false-flag
+    # rate is then measured on a DISJOINT set of base streams. Three streams
+    # cannot estimate a 95th percentile, and the earlier 1-in-3 base false flag
+    # was as much small-sample noise as it was a real alarm rate.
+    N_DRIFT_CALIB, N_DRIFT_EVAL = 16, 12
     base_calibs = [_calibration_set(2)] + [
         _sized_stream(500 + j * 7, max(TRAIN_KS), 1.0, j)
         for j in range(N_POLICY_STREAMS)]
@@ -508,8 +513,36 @@ def drift() -> pd.DataFrame:
     risk = IncidentRisk().fit(cal_inc)
     fc = ExposureForecaster(seed=0).fit(pd.concat(cal_snaps, ignore_index=True))
 
-    # Drift cut-off from base calibration traffic ONLY.
-    monitor = DriftMonitor(quantile=0.95, seed=0).fit(base_calibs)
+    # Drift cut-off from base calibration traffic ONLY, over many streams.
+    drift_calib = [_sized_stream(3000 + j * 17, max(TRAIN_KS), 1.0, j)
+                   for j in range(N_DRIFT_CALIB)]
+    monitor = DriftMonitor(quantile=0.95, seed=0).fit(drift_calib)
+
+    # Base false-flag rate on streams disjoint from the ones that set the
+    # cut-off. This is the number that decides whether the guardrail is a
+    # safety control or an experiment.
+    base_eval = [_sized_stream(7000 + j * 23, TEST_K, TEST_CAMO, j)
+                 for j in range(N_DRIFT_EVAL)]
+    base_flags = [monitor.check(f) for f in base_eval]
+    base_false_flag_rate = float(np.mean([c["drifted"] for c in base_flags]))
+
+    # Confound diagnostic. A campaign shifts the very statistics the monitor
+    # watches, so a "false flag" on base traffic may be the attack rather than
+    # the merchant. Holding the merchant fixed and varying only the campaign
+    # separates the two.
+    def _flag_rate(streams):
+        f = [monitor.check(x)["drifted"] for x in streams]
+        return round(float(np.mean(f)), 4)
+
+    confound = {
+        "campaign_matches_calibration_k30": _flag_rate(
+            [_sized_stream(7000 + j * 23, max(TRAIN_KS), 1.0, j)
+             for j in range(N_DRIFT_EVAL)]),
+        "background_only_no_campaign": _flag_rate(
+            [load_background(path=None, n_rows=N_BACKGROUND, seed=7000 + j * 23,
+                             profile=BASE) for j in range(N_DRIFT_EVAL)]),
+        "campaign_unseen_morphology_k60": base_false_flag_rate,
+    }
 
     rows = []
     for prof in [BASE, *SHIFTED]:
@@ -560,13 +593,30 @@ def drift() -> pd.DataFrame:
     df.to_csv(RESULTS / "drift_raw.csv", index=False)
     per.to_csv(RESULTS / "drift.csv", index=False)
     json.dump({"threshold_psi": monitor.threshold,
+               "n_calibration_streams": N_DRIFT_CALIB,
+               "n_base_eval_streams": N_DRIFT_EVAL,
+               "base_false_flag_rate": round(base_false_flag_rate, 4),
+               "base_eval_psi": [c["psi"] for c in base_flags],
+               "confound_diagnostic": confound,
+               "status": ("experimental decision support - base false-flag rate is "
+                          "too high for a default safety control, and the signal "
+                          "partly tracks campaign shape rather than merchant shift"),
+               "base_reuse_reference": monitor.base_reuse,
                "null_scores": [round(x, 4) for x in monitor.null_scores],
                "profiles": {p.name: p.blurb for p in [BASE, *SHIFTED]},
                "per_profile": per.to_dict("records"),
                "streams": df.to_dict("records")},
               open(RESULTS / "drift.json", "w"), separators=(",", ":"))
 
-    print(f"\ndrift cut-off (95th pct of base-vs-base PSI): {monitor.threshold:.4f}\n")
+    print(f"\ndrift cut-off (95th pct of base-vs-base PSI over "
+          f"{N_DRIFT_CALIB} streams): {monitor.threshold:.4f}")
+    print(f"base false-flag rate on {N_DRIFT_EVAL} disjoint base streams: "
+          f"{base_false_flag_rate:.1%}  "
+          f"(median base PSI {np.median([c['psi'] for c in base_flags]):.4f})")
+    print("\nconfound diagnostic - merchant fixed, campaign varied:")
+    for k, v in confound.items():
+        print(f"  {k:>36}: {v:.1%}")
+    print("  -> the flag rate tracks CAMPAIGN shape, not merchant variation\n")
     print(per.to_string(index=False))
     print("\nper stream:")
     print(df[["profile", "stream", "psi", "drifted", "largest_shift",

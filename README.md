@@ -398,17 +398,47 @@ false automated interventions and downgrades 19 genuine responses to review-only
 analyst minutes. Whether that is worth it depends on the merchant's tolerance for wrongly
 throttling real customers, which is exactly the judgement a person should make.
 
-### Two honest caveats
+### Status: experimental decision support, not a safety control
 
-**Base traffic tripped the alarm once in three streams** (PSI 0.169 against a 0.154
-cut-off — marginal). With three streams that rate is not well estimated, and a false drift
-alarm is not free: it downgraded 7 genuine responses for nothing.
+The cut-off is fitted on **16 independent base streams**; the false-flag rate is then
+measured on **12 disjoint base streams**. It comes out at **33.3%** — far too high to run as
+a default safety control, and that verdict stands regardless of how well it catches the
+shifted profiles.
 
-**The drift signal partly detects the attack, not only the merchant.** A campaign of several
-hundred events with distinctive reuse shifts the very statistics being monitored. The
-threshold is fitted on base streams that *also* contain campaigns, which controls for this
-in part, but the confound is inherent — live, you cannot separate "different merchant" from
-"under attack" before deciding. Reported rather than engineered around.
+**Why it is that high is measurable, and it is the confound rather than merchant variation.**
+Holding the merchant fixed at base and varying only the campaign:
+
+| base traffic, merchant held fixed | false-flag rate |
+|---|---:|
+| campaign matches calibration morphology (`k=30`) | **8.3%** |
+| background only, no campaign | 16.7% |
+| campaign of unseen morphology (`k=60`) | **33.3%** |
+
+Against a 5% nominal target, the monitor behaves acceptably when the campaign resembles what
+calibration contained, and degrades badly when it does not. **The signal is substantially
+detecting the attack, not the merchant** — a campaign of several hundred events with
+distinctive reuse moves the very statistics being watched.
+
+That is an identification problem, not a tuning bug: live, you cannot separate "different
+merchant" from "under attack" before deciding. The standard fix is to monitor drift on a
+much slower timescale than detection, so no single campaign can move the baseline. That is
+not implemented here.
+
+**So it is labelled what it is:** experimental decision support that can route an incident to
+a human, not a control anything should depend on. A false drift alarm is not free either —
+on the base streams it downgraded genuine responses for nothing.
+
+### Wording that follows from this
+
+The demo says:
+
+> *"This live traffic profile is outside Koronis's calibration distribution. Automation is
+> lowered and the incident is routed to review."*
+
+Not *"this merchant's traffic doesn't resemble…"*, which asserts a cause the measurement
+cannot support. Where a reuse ratio is quoted it is the **observed** mean events-per-entity
+divided by the base mean, recorded in `results/drift.json` — a PSI value says how much a
+distribution moved, not by what factor.
 
 ## Which mechanism carries the signal
 
