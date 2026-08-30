@@ -137,6 +137,15 @@ canvas{display:block;width:100%;background:var(--canvas-bg)}
 .rung.on{color:var(--ink)} .rung.on .dot{background:var(--accent)}
 .rung .dot{width:8px;height:8px;border-radius:50%;background:var(--line);margin-top:5px}
 .rung.warn.on .dot{background:var(--crit)}
+.rung{grid-template-columns:16px 1fr auto}
+.rung .cost{font-family:"IBM Plex Mono",monospace;font-size:11.5px;color:var(--ink-3);
+  font-variant-numeric:tabular-nums}
+.rung.on .cost{color:var(--ink)}
+.rung.best .cost{color:var(--accent);font-weight:600}
+.assum{margin:2px 0 0;font-size:10.5px;color:var(--ink-3);line-height:1.5}
+.incbar{display:flex;flex-wrap:wrap;gap:8px;align-items:baseline;
+  font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--ink-3)}
+.incbar b{color:var(--accent);font-weight:600}
 
 /* tables */
 .tbl{overflow-x:auto}
@@ -197,6 +206,8 @@ td.rng{color:var(--ink-3);font-size:10.5px}
         <span class="sub2" id="m-vel-sub"></span></div>
     </div>
 
+    <p class="incbar" id="incbar"></p>
+
     <div class="grid">
       <div class="panel">
         <div class="ph"><h2>Risk score vs frozen threshold</h2>
@@ -216,17 +227,17 @@ td.rng{color:var(--ink-3);font-size:10.5px}
         <canvas id="graph"></canvas>
       </div>
       <div class="panel">
-        <div class="ph"><h2>Assessment</h2><span class="hint" id="card-t"></span></div>
+        <div class="ph"><h2>Incident &amp; recommended action</h2>
+          <span class="hint" id="card-t"></span></div>
         <div class="card">
           <div class="lead"><strong id="card-title">Awaiting traffic</strong>
             <span class="mono" id="card-score" style="color:var(--ink-3)"></span></div>
           <div class="ev" id="card-ev"></div>
           <div class="why" id="card-why">Press <b>Replay incident</b> to stream the held-out campaign one event at a time.</div>
           <div class="ladder">
-            <span class="lk">Recommended action</span>
-            <div class="rung" id="r0"><i class="dot"></i><span><b>Monitor</b> — no action, continue scoring</span></div>
-            <div class="rung" id="r1"><i class="dot"></i><span><b>Rate-limit</b> the linked entities</span></div>
-            <div class="rung warn" id="r2"><i class="dot"></i><span><b>Step-up verification</b> on matching attempts, and queue for analyst review</span></div>
+            <span class="lk">Expected cost by action — lowest wins</span>
+            <div id="ladder-rows"></div>
+            <p class="assum" id="assum"></p>
           </div>
         </div>
       </div>
@@ -250,6 +261,29 @@ td.rng{color:var(--ink-3);font-size:10.5px}
         arrives later, because coordination has to accumulate first, but precision recovers.
         Remove both and there is nothing left, so no third signal source is hiding in the
         features.</p>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="ph"><h2>Response policy — merchant cost and analyst workload</h2>
+        <span class="hint" id="policy-hint"></span></div>
+      <div class="tbl"><table id="t-policy"></table></div>
+      <div class="prose" style="padding-top:0">
+        <p><b>Event thresholding reaches the same decision and hands an analyst seventeen
+        times the triage.</b> Consolidation, not detection, is the difference. Always-hold
+        escalates false incidents and costs more than doing nothing. All action costs and
+        effectiveness figures are declared assumptions, not measurements.</p>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="ph"><h2>Incident-level reliability</h2>
+        <span class="hint" id="rel-hint"></span></div>
+      <div class="tbl"><table id="t-rel"></table></div>
+      <div class="prose" style="padding-top:0">
+        <p>A well-calibrated <i>event</i> model does not give a calibrated <i>incident</i>
+        probability for free — the events inside an incident are strongly dependent, which is
+        the entire signal. Incident risk is a separate model, fitted on calibration incidents
+        and measured here. Separation is clean at both ends; <b>the middle bins hold few
+        incidents and are weakly determined</b>.</p>
       </div>
     </div>
     <div class="grid3">
@@ -297,6 +331,11 @@ td.rng{color:var(--ink-3);font-size:10.5px}
         <p>Rupee amounts are declared constants, not measurements, and they assume detection
         halts a campaign immediately. Read them as the <b>cost of latency</b>, not guaranteed
         savings.</p>
+        <h3>Actions are simulated</h3>
+        <p>Every recommended action is decision support in a modelled merchant workflow.
+        Nothing blocks a payment, calls a gateway or touches live infrastructure. The cost
+        and effectiveness figures behind each rung are <b>declared assumptions</b>, stated so
+        they can be replaced.</p>
         <h3>Defence-only</h3>
         <p>No network capability anywhere in the codebase, no live payment integration, no real
         card data, no real BIN ranges. The campaign generator produces labelled test data from
@@ -379,6 +418,32 @@ table(el("t-mech"), [
 ], D.mech, {k:"variant", v:"koronis_full"});
 el("mech-hint").textContent = D.mech[0].n_trials + " trials · medians";
 
+var POL = D.policy;
+var PRIME = POL.detail.reduce(function(a,b){return b.n_attempts>a.n_attempts?b:a;}, POL.detail[0]);
+var ACTION_LABEL = {monitor:"Monitor", rate_limit:"Rate-limit",
+  step_up:"Step-up verification", hold_review:"Hold + analyst review"};
+var ACTION_NOTE = {monitor:"no action; keep scoring",
+  rate_limit:"throttle the linked entities",
+  step_up:"extra verification on matching attempts",
+  hold_review:"hold matching attempts, queue for review"};
+
+table(el("t-policy"), [
+  {h:"policy", f:function(r){return r.policy;}},
+  {h:"incidents actioned", f:function(r){return r.incidents_actioned;}},
+  {h:"false incidents", f:function(r){return r.false_incidents;}},
+  {h:"analyst minutes", f:function(r){return Number(r.analyst_minutes).toFixed(1);}},
+  {h:"merchant cost", f:function(r){return "₹"+num(Math.round(r.merchant_cost_inr));}},
+], POL.across_streams, {k:"policy", v:"incident_policy"});
+el("policy-hint").textContent = "median across "+POL.n_streams+" independent test streams";
+
+table(el("t-rel"), [
+  {h:"predicted", f:function(r){return f3(r.predicted);}},
+  {h:"observed", f:function(r){return f3(r.observed);}},
+  {h:"incidents", f:function(r){return r.count;}},
+], POL.reliability.filter(function(r){return r.count>0;}));
+el("rel-hint").textContent = "fitted on "+POL.n_calibration_incidents+
+  " calibration incidents · measured on "+POL.n_pooled_test_incidents+" held-out";
+
 table(el("t-bench"), [
   {h:"metric", f:function(r){return r.k;}}, {h:"value", f:function(r){return r.v;}},
 ], [
@@ -421,9 +486,6 @@ function setStage(s){
   stage = s;
   el("stage").textContent = STAGE_TEXT[s][0];
   el("stage").className = "stage " + STAGE_TEXT[s][1];
-  el("r0").className = "rung" + (s >= 0 ? " on" : "");
-  el("r1").className = "rung" + (s >= 2 ? " on" : "");
-  el("r2").className = "rung warn" + (s >= 3 ? " on" : "");
 }
 
 function feedRow(e){
@@ -445,6 +507,36 @@ function updateCard(e){
     '<div><span class="k">IP links</span><span class="v">'+ev.ip_id+'</span></div>' +
     '<div><span class="k">BIN links</span><span class="v">'+ev.bin_id+'</span></div>' +
     '<div><span class="k">Alerts in window</span><span class="v">'+e.ring+'</span></div>';
+
+  /* Incident view: alerts seen so far, consolidated, with the recommended
+     action and why the alternatives were rejected. Costs come from the
+     policy artifact, not from the page. */
+  var campAlerts = seen.filter(function(x){return x.alert && x.campaign;}).length;
+  el("incbar").innerHTML = campAlerts
+    ? "<span>consolidating <b>"+campAlerts+"</b> event alerts into <b>1</b> incident · "+
+      PRIME.n_devices+" devices · "+PRIME.n_ips+" IPs · "+PRIME.n_bins+" BIN ranges · "+
+      "incident risk <b>"+PRIME.risk.toFixed(3)+"</b> · remaining exposure ₹"+
+      num(Math.round(PRIME.remaining_exposure_inr))+"</span>"
+    : "<span>no incident open</span>";
+
+  var costs = PRIME.option_costs, best = PRIME.action;
+  var order = ["monitor","rate_limit","step_up","hold_review"];
+  var reached = {0:["monitor"],1:["monitor"],
+                 2:["monitor","rate_limit"],3:order};
+  el("ladder-rows").innerHTML = order.map(function(a){
+    var isBest = (a === best) && stage >= 3;
+    var on = reached[stage].indexOf(a) >= 0;
+    return '<div class="rung'+(on?" on":"")+(isBest?" best":"")+
+      (a==="hold_review"?" warn":"")+'"><i class="dot"></i>'+
+      '<span><b>'+ACTION_LABEL[a]+'</b> — '+ACTION_NOTE[a]+'</span>'+
+      '<span class="cost">₹'+num(Math.round(costs[a]))+(isBest?" ◀":"")+'</span></div>';
+  }).join("");
+  el("assum").textContent = stage >= 3
+    ? "Lowest expected cost wins: " + ACTION_LABEL[best] + ". Costs and effectiveness are "
+      + "declared assumptions in koronis/incident.py; the action is a recommendation in a "
+      + "simulated workflow, not a live block."
+    : "Expected costs shown for the open incident. No action is recommended until the "
+      + "evidence supports one.";
 
   var titles = ["Awaiting traffic", "Elevated risk", "Coordination emerging", "Campaign confirmed"];
   el("card-title").textContent = titles[stage];
@@ -618,6 +710,7 @@ function doReset(){
   el("m-score").textContent = "—";
   el("card-why").innerHTML = "Press <b>Replay incident</b> to stream the held-out campaign one event at a time.";
   el("card-title").textContent = "Awaiting traffic";
+  el("incbar").innerHTML = "<span>no incident open</span>";
 }
 addEventListener("resize", function(){drawChart(); drawGraph();});
 

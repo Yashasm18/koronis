@@ -23,6 +23,7 @@ def _bundle() -> dict:
     return {
         "replay": json.loads((RESULTS / "replay_demo.json").read_text()),
         "bench": json.loads((RESULTS / "benchmark.json").read_text()),
+        "policy": json.loads((RESULTS / "policy.json").read_text()),
         "seeds": list(csv.DictReader((RESULTS / "seeds_summary.csv").open())),
         "mech": list(csv.DictReader((RESULTS / "mechanism.csv").open())),
         "frontier": list(csv.DictReader((RESULTS / "frontier.csv").open())),

@@ -7,6 +7,7 @@
     python -m koronis.cli replay      # causal event-by-event replay -> JSON
     python -m koronis.cli benchmark   # p50/p95 per-event inference latency
     python -m koronis.cli mechanism   # which mechanism actually carries the signal
+    python -m koronis.cli incidents   # consolidate alerts -> incidents -> actions
 """
 import json
 import sys
@@ -27,6 +28,8 @@ from .models.gbdt import GBDTDetector
 from .models.heuristic import DeclineBurstDetector, SharedEntityDetector
 from .models.koronis import KoronisDetector
 from .models.velocity import MultiEntityVelocityDetector, tune_velocity
+from .incident import IncidentRisk, build_incidents
+from .eval.policy import evaluate_policies, incident_reliability
 from .stream import StreamingKoronis
 
 RESULTS = Path("results")
@@ -327,6 +330,97 @@ def mechanism(n_seeds: int = 5) -> pd.DataFrame:
     return summary
 
 
+N_POLICY_STREAMS = 8
+
+
+def incidents() -> pd.DataFrame:
+    """Consolidate event alerts into incidents and pick a response for each.
+
+    The incident risk model is fitted on CALIBRATION incidents only, never on
+    test - the same three-way protocol the detector uses.
+
+    A single calibration stream yields only a couple of incidents, which cannot
+    determine a risk model or support a reliability claim. Calibration and
+    evaluation therefore pool incidents across several independent streams.
+    The detector is trained once and reused; only scoring is repeated, so this
+    costs little. Incident-level reliability is MEASURED here rather than
+    inherited from the event model: the events inside an incident are strongly
+    dependent, so event calibration says nothing about the aggregate.
+    """
+    train = _train_set(0)
+    taus, gbdt, kor = _fit_all(train)
+
+    def _incidents_for(frame):
+        sc = _raw(kor.score_events(frame))
+        return sc, build_incidents(frame, sc, thr)
+
+    calib0 = _calibration_set(2)
+    thr, _ = cost_optimal_threshold(_raw(kor.score_events(calib0)),
+                                    calib0["label"].to_numpy(),
+                                    COST_PER_ATTEMPT_INR, COST_PER_FALSE_BLOCK_INR)
+
+    cal_inc = []
+    for j in range(N_POLICY_STREAMS):
+        _, inc = _incidents_for(_calibration_set(500 + j * 7))
+        cal_inc.extend(inc)
+    risk = IncidentRisk().fit(cal_inc)
+
+    # Headline stream, the one the demo replays.
+    test = _dataset(1, TEST_K, TEST_CAMO)
+    scores = _raw(kor.score_events(test))
+    summary, detail = evaluate_policies(test, scores, thr, risk)
+
+    # Policy comparison and reliability pooled over independent test streams.
+    pooled, pool_inc, pool_risk = [], [], []
+    for j in range(N_POLICY_STREAMS):
+        f = _dataset(900 + j * 11, TEST_K, TEST_CAMO)
+        sc, inc = _incidents_for(f)
+        r = risk.predict(inc)
+        for i2, rv in zip(inc, r):
+            i2.risk = float(rv)
+        pool_inc.extend(inc); pool_risk.extend(list(r))
+        sm, _ = evaluate_policies(f, sc, thr, risk)
+        sm["stream"] = j
+        pooled.append(sm)
+
+    pooled = pd.concat(pooled, ignore_index=True)
+    across = (pooled.groupby("policy", sort=False)
+              [["incidents_actioned", "false_incidents", "analyst_minutes",
+                "merchant_cost_inr"]].median().round(1).reset_index())
+    rel = incident_reliability(pool_inc, np.array(pool_risk))
+
+    RESULTS.mkdir(exist_ok=True)
+    summary.to_csv(RESULTS / "policy.csv", index=False)
+    across.to_csv(RESULTS / "policy_across_streams.csv", index=False)
+    pd.DataFrame(detail).to_csv(RESULTS / "incidents.csv", index=False)
+    rel.to_csv(RESULTS / "incident_reliability.csv", index=False)
+    json.dump({"threshold": thr, "detail": detail,
+               "summary": summary.to_dict("records"),
+               "across_streams": across.to_dict("records"),
+               "reliability": rel.replace({np.nan: None}).to_dict("records"),
+               "n_calibration_incidents": len(cal_inc),
+               "n_pooled_test_incidents": len(pool_inc),
+               "n_streams": N_POLICY_STREAMS},
+              open(RESULTS / "policy.json", "w"), separators=(",", ":"))
+
+    print(f"\n{summary['events_alerted'].iloc[0]} event alerts -> "
+          f"{summary['incidents_formed'].iloc[0]} incidents on the demo stream")
+    print(f"risk model fitted on {len(cal_inc)} calibration incidents "
+          f"from {N_POLICY_STREAMS} streams; reliability measured on "
+          f"{len(pool_inc)} held-out incidents\n")
+    print(summary.drop(columns=["exposure_if_unstopped_inr"]).to_string(index=False))
+    print(f"\nmedian across {N_POLICY_STREAMS} independent test streams:")
+    print(across.to_string(index=False))
+    print("\nincidents on the demo stream:")
+    for d in detail:
+        print(f"  {d['incident_id']}  risk {d['risk']:.3f}  {d['n_attempts']:>4} attempts  "
+              f"{d['n_devices']:>3}dev {d['n_ips']:>3}ip {d['n_bins']:>3}bin  "
+              f"genuine={str(d['genuine']):>5}  -> {d['action']}")
+    print("\nincident-level reliability (measured, not inherited):")
+    print(rel.dropna().to_string(index=False))
+    return summary
+
+
 def frontier() -> pd.DataFrame:
     from .eval.frontier import sweep
     df = sweep(n_values=[200, 400, 800, 1600], k_values=[2, 10, 50, 200],
@@ -560,4 +654,4 @@ if __name__ == "__main__":
     cmd = sys.argv[1] if len(sys.argv) > 1 else "ablation"
     {"ablation": ablation, "frontier": frontier, "latency": latency,
      "seeds": seeds, "replay": replay, "benchmark": benchmark,
-     "mechanism": mechanism}[cmd]()
+     "mechanism": mechanism, "incidents": incidents}[cmd]()

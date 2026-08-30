@@ -1,0 +1,12 @@
+incident_id,risk,n_attempts,n_devices,n_ips,n_bins,remaining_attempts,remaining_exposure_inr,genuine,action,option_costs,t_start
+INC-000,1.0,408,72,72,72,400,29200.0,True,hold_review,"{'monitor': 29199.92, 'rate_limit': 13259.96, 'step_up': 4729.99, 'hold_review': 1884.01}",83.87
+INC-001,0.0728,1,1,1,1,0,0.0,False,monitor,"{'monitor': 0.0, 'rate_limit': 490.89, 'step_up': 2019.02, 'hold_review': 6571.42}",96.51
+INC-002,0.0718,1,1,1,1,0,0.0,False,monitor,"{'monitor': 0.0, 'rate_limit': 491.26, 'step_up': 2020.68, 'hold_review': 6576.93}",221.53
+INC-003,0.0723,1,1,1,1,0,0.0,False,monitor,"{'monitor': 0.0, 'rate_limit': 491.09, 'step_up': 2019.89, 'hold_review': 6574.3}",322.21
+INC-004,0.068,1,1,1,1,0,0.0,False,monitor,"{'monitor': 0.0, 'rate_limit': 492.79, 'step_up': 2027.56, 'hold_review': 6599.87}",6660.67
+INC-005,0.0705,1,1,1,1,0,0.0,False,monitor,"{'monitor': 0.0, 'rate_limit': 491.79, 'step_up': 2023.04, 'hold_review': 6584.81}",6727.51
+INC-006,0.1388,2,1,2,2,0,0.0,False,monitor,"{'monitor': 0.0, 'rate_limit': 464.48, 'step_up': 1900.18, 'hold_review': 6175.26}",8206.39
+INC-007,0.0728,1,1,1,1,0,0.0,False,monitor,"{'monitor': 0.0, 'rate_limit': 490.9, 'step_up': 2019.04, 'hold_review': 6571.48}",10355.35
+INC-008,0.0731,1,1,1,1,0,0.0,False,monitor,"{'monitor': 0.0, 'rate_limit': 490.74, 'step_up': 2018.34, 'hold_review': 6569.13}",10746.53
+INC-009,0.0729,1,1,1,1,0,0.0,False,monitor,"{'monitor': 0.0, 'rate_limit': 490.85, 'step_up': 2018.83, 'hold_review': 6570.76}",13359.51
+INC-010,0.0731,1,1,1,1,0,0.0,False,monitor,"{'monitor': 0.0, 'rate_limit': 490.76, 'step_up': 2018.42, 'hold_review': 6569.39}",13789.23

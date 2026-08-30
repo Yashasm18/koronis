@@ -2,12 +2,12 @@
 
 **Detecting distributed card-testing campaigns that per-entity velocity rules cannot see — at any threshold.**
 
-[![tests](https://img.shields.io/badge/tests-59%20passing-2ea44f)](tests/)
+[![tests](https://img.shields.io/badge/tests-70%20passing-2ea44f)](tests/)
 [![python](https://img.shields.io/badge/python-3.11%2B-3776ab)](https://www.python.org/)
 [![graph libs](https://img.shields.io/badge/graph%20libraries-none-8a3ffc)](koronis/models/layers.py)
 [![track](https://img.shields.io/badge/Razorpay%20Buildathon-Track%2002%20·%20AI%20Risk%20Manager-0c2451)](https://razorpay.com/buildathon/)
 
-Koronis is a **detector** for one class of merchant loss: card testing, where a fraudster
+Koronis is a **defence-only detector and decision-support prototype** for one class of merchant loss: card testing, where a fraudster
 runs thousands of micro-transactions through a checkout to find which stolen cards are
 live. It reports **precision and recall on a held-out test set**, **false-positive cost**
 in rupees, and one metric published work rarely does — *detection latency*, because the
@@ -208,6 +208,74 @@ attempt is submitted, so no detector can prevent the attempt it learns from. Wha
 alert buys is the ability to stop everything that follows. The next section measures exactly
 how much of the result comes from each mechanism.
 
+## From alerts to a decision
+
+Four hundred event alerts are not four hundred things for a fraud team to do — they are
+one campaign. Koronis consolidates them, then recommends the intervention with the lowest
+**expected cost**, not the one matching the highest risk score.
+
+```
+419 event alerts  →  11 incidents  →  1 action recommended
+```
+
+On the held-out stream, the genuine campaign becomes a single incident of **408 attempts
+across 72 devices, 72 IPs and 72 BIN ranges**, at risk 1.000. The other ten incidents are
+isolated background alerts at risk ≈ 0.07 — correctly left on `monitor`.
+
+### The action assumptions
+
+Every figure below is a declared assumption about a merchant workflow, not a measurement.
+They live in [`koronis/incident.py`](koronis/incident.py) so a reviewer can substitute
+their own and re-run.
+
+| action | friction (genuine) | harm (false) | stops | analyst |
+|---|---:|---:|---:|---:|
+| monitor | ₹0 | ₹0 | 0% | — |
+| rate-limit | ₹120 | ₹400 | 55% | — |
+| step-up verification | ₹350 | ₹1,800 | 85% | — |
+| hold + review | ₹900 | ₹6,000 | 97% | 12 min |
+
+The chosen action minimises `friction + risk × remaining_exposure × (1 − stops) +
+(1 − risk) × false_harm`. A high risk score with nothing left to prevent correctly gets
+`monitor`; a test asserts exactly that.
+
+### Policy comparison
+
+Median across 8 independent test streams:
+
+| policy | incidents actioned | false incidents | analyst minutes | merchant cost |
+|---|---:|---:|---:|---:|
+| always allow | 0 | 0 | 0 | ₹29,200 |
+| always hold | 6 | **5** | 72 | ₹36,924 |
+| event-by-event thresholding | 1 | 0 | **205.8** | ₹3,736 |
+| **incident policy** | **1** | **0** | **12** | **₹1,884** |
+
+Event thresholding reaches the same decision, but hands an analyst **205.8 minutes** of
+triage instead of 12 — consolidation, not detection, is the difference. Always-hold escalates
+five false incidents per stream and costs more than doing nothing at all.
+
+### Incident-level calibration is measured, not inherited
+
+An event model with ECE 0.0025 does **not** give a calibrated incident probability for free:
+the events inside an incident are strongly dependent — that dependence is the entire signal —
+so no independence-flavoured combination of their scores is a probability of anything.
+
+Incident risk is therefore a separate model, fitted on **47 calibration incidents pooled
+across 8 streams**, and its reliability measured on 47 held-out incidents:
+
+| predicted | observed | incidents |
+|---:|---:|---:|
+| 0.075 | 0.00 | 34 |
+| 0.213 | 0.00 | 3 |
+| 0.466 | 0.00 | 2 |
+| 1.000 | 1.00 | 8 |
+
+Separation is clean at both ends. **The middle is weakly determined** — five incidents across
+two bins — and slightly over-confident. Reported rather than smoothed over.
+
+A single calibration stream yields only two incidents, which cannot determine an eight-feature
+model at all; a test records that failure so the pooling requirement cannot be quietly dropped.
+
 ## Which mechanism carries the signal
 
 The full model alerting on the opening attempt demanded an explanation rather than a
@@ -329,6 +397,9 @@ Koronis is a detector. It identifies coordinated activity; it does not generate 
 any live system. The campaign injector exists solely to produce labelled test data, as it
 does in every fraud-ML paper, and is constrained accordingly:
 
+- **every recommended action is simulated.** Nothing blocks a payment, calls a gateway, or
+  touches live merchant infrastructure. The action ladder is decision support in a modelled
+  workflow, with its cost and effectiveness figures declared as assumptions
 - operates on in-memory dataframes; **no network capability anywhere in the codebase**
 - no real BIN ranges, no real card numbers, no live endpoints
 - reproduces only attack characteristics already documented publicly in Visa's own
@@ -371,6 +442,7 @@ python -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/python -m koronis.cli replay        # causal event-by-event replay -> JSON
 .venv/bin/python -m koronis.cli benchmark     # p50/p95 per-event inference latency
 .venv/bin/python -m koronis.cli mechanism     # which mechanism carries the signal
+.venv/bin/python -m koronis.cli incidents     # alerts -> incidents -> recommended action
 ```
 
 Results are written to `results/*.csv`. Every number in this README comes from those files.
