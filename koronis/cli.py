@@ -381,7 +381,7 @@ def incidents() -> pd.DataFrame:
         f = _sized_stream(500 + j * 7, max(TRAIN_KS), 1.0, j)
         sc, inc = _incidents_for(f)
         cal_inc.extend(inc)
-        cal_snaps.append(build_snapshots(f, inc, sc))
+        cal_snaps.append(build_snapshots(f, inc, sc, stream_id=j))
     risk = IncidentRisk().fit(cal_inc)
 
     # The forecaster is fitted on CALIBRATION snapshots only. Its target -
@@ -404,7 +404,7 @@ def incidents() -> pd.DataFrame:
         for i2, rv in zip(inc, r):
             i2.risk = float(rv)
         pool_inc.extend(inc); pool_risk.extend(list(r))
-        test_snaps.append(build_snapshots(f, inc, sc))
+        test_snaps.append(build_snapshots(f, inc, sc, stream_id=100 + j))
         sm, _ = evaluate_policies(f, sc, thr, risk, fc)
         sm["stream"] = j
         pooled.append(sm)
@@ -431,7 +431,9 @@ def incidents() -> pd.DataFrame:
                "n_streams": N_POLICY_STREAMS,
                "forecast": fcast,
                "n_calibration_snapshots": int(len(cal_snaps)),
-               "campaign_sizes": list(CAMPAIGN_SIZES)},
+               "campaign_sizes": list(CAMPAIGN_SIZES),
+               "forecast_fit_streams": [int(g) for g in fc.fit_groups_],
+               "forecast_conformal_streams": [int(g) for g in fc.conformal_groups_]},
               open(RESULTS / "policy.json", "w"), separators=(",", ":"))
 
     print(f"\n{summary['events_alerted'].iloc[0]} event alerts -> "
@@ -451,6 +453,7 @@ def incidents() -> pd.DataFrame:
     print(rel.dropna().to_string(index=False))
     print(f"\nremaining-exposure forecast, fitted on {len(cal_snaps)} calibration "
           f"snapshots, evaluated on {fcast.get('n_snapshots', 0)} held-out:")
+    print(f"  fit streams {fc.fit_groups_} | conformal streams {fc.conformal_groups_}")
     print(f"  P{int(fc.upper_q*100)} coverage {fcast['coverage_upper']:.1%} "
           f"(target {fc.upper_q:.0%})   median abs error "
           f"{fcast['median_abs_err_p50']:.1f} attempts   "

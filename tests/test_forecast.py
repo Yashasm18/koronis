@@ -26,7 +26,7 @@ def fitted():
     snaps = []
     for j, n in enumerate((150, 300, 500, 700, 220, 420)):
         ev, sc = _stream(j, n)
-        snaps.append(build_snapshots(ev, build_incidents(ev, sc, 0.5), sc))
+        snaps.append(build_snapshots(ev, build_incidents(ev, sc, 0.5), sc, stream_id=j))
     train = pd.concat(snaps, ignore_index=True)
     return ExposureForecaster(seed=0).fit(train), train
 
@@ -41,6 +41,38 @@ def test_snapshot_uses_only_the_observed_prefix():
     b = snapshot_features(truncated, rows_t, sc[: inc.rows[19] + 1], 20)
     for k in FEATURES:
         assert a[k] == pytest.approx(b[k], rel=1e-9, abs=1e-9), k
+
+
+def test_fit_and_conformal_partitions_are_disjoint():
+    """Conformal validity needs the pad measured on incidents the quantile
+    models never saw. Splitting by snapshot row would put nested prefixes of
+    ONE incident on both sides - not a test-set leak, but the residual would be
+    measured on data the model has effectively already seen, inflating apparent
+    coverage."""
+    snaps = []
+    for j, n in enumerate((150, 300, 500, 700, 220, 420)):
+        ev, sc = _stream(j, n)
+        snaps.append(build_snapshots(ev, build_incidents(ev, sc, 0.5), sc, stream_id=j))
+    train = pd.concat(snaps, ignore_index=True)
+    fc = ExposureForecaster(seed=0).fit(train)
+
+    assert fc.fit_groups_ and fc.conformal_groups_
+    assert not set(fc.fit_groups_) & set(fc.conformal_groups_)
+
+    fit_ids = set(train[train["stream_id"].isin(fc.fit_groups_)]["group_id"])
+    cal_ids = set(train[train["stream_id"].isin(fc.conformal_groups_)]["group_id"])
+    assert not fit_ids & cal_ids, "an incident appears in both partitions"
+
+
+def test_stream_id_disambiguates_incident_ids():
+    """Incident ids restart at INC-000 per stream, so the bare id is not a
+    usable partition key."""
+    ev0, sc0 = _stream(0, 300)
+    ev1, sc1 = _stream(1, 300)
+    a = build_snapshots(ev0, build_incidents(ev0, sc0, 0.5), sc0, stream_id=0)
+    b = build_snapshots(ev1, build_incidents(ev1, sc1, 0.5), sc1, stream_id=1)
+    assert set(a["incident_id"]) & set(b["incident_id"])      # ids collide
+    assert not set(a["group_id"]) & set(b["group_id"])        # keys do not
 
 
 def test_snapshots_cover_many_prefix_lengths(fitted):
@@ -59,13 +91,14 @@ def test_conformalised_interval_achieves_its_stated_coverage(fitted):
     """A 90% interval covering 60% of the time is worse than no interval.
 
     Held-out campaign sizes are outside the fitted set, so this measures
-    coverage under the shift the forecaster will actually meet.
+    coverage under the shift the forecaster will actually meet. The pad was fit
+    on calibration incidents disjoint from the quantile models' training data.
     """
     fc, _ = fitted
     held = []
     for j, n in enumerate((190, 640, 360), start=50):
         ev, sc = _stream(j, n)
-        held.append(build_snapshots(ev, build_incidents(ev, sc, 0.5), sc))
+        held.append(build_snapshots(ev, build_incidents(ev, sc, 0.5), sc, stream_id=j))
     res = evaluate_forecast(fc, pd.concat(held, ignore_index=True))
     assert res["coverage_upper"] >= 0.75, res
 

@@ -14,8 +14,10 @@ the two:
     expected remaining exposure  =  P(genuine) × forecast(remaining attempts) × cost
 
 Forecasts come with an interval, because a system that cannot tell the future
-should say so rather than guess confidently. The upper quantile is conformalised
-against held-out residuals, so its coverage is measured rather than assumed.
+should say so rather than guess confidently. The conformal pad is fit on a
+held-out subset of CALIBRATION incidents, and coverage is then evaluated on
+held-out TEST incidents — so the stated interval is measured on incidents
+nothing in the pipeline has seen.
 """
 import numpy as np
 import pandas as pd
@@ -64,8 +66,13 @@ def snapshot_features(events: pd.DataFrame, rows: list[int],
 
 
 def build_snapshots(events: pd.DataFrame, incidents: list[Incident],
-                    scores: np.ndarray) -> pd.DataFrame:
-    """Prefix snapshots of every incident, with the remaining count as target."""
+                    scores: np.ndarray, stream_id: int = 0) -> pd.DataFrame:
+    """Prefix snapshots of every incident, with the remaining count as target.
+
+    `stream_id` qualifies the incident id. Ids restart at INC-000 for every
+    stream, so grouping on the bare id would silently merge unrelated incidents
+    from different streams into one partition key.
+    """
     rows = []
     for inc in incidents:
         total = len(inc.rows)
@@ -75,6 +82,8 @@ def build_snapshots(events: pd.DataFrame, incidents: list[Incident],
             f = snapshot_features(events, inc.rows, scores, m)
             f["remaining"] = float(total - m)
             f["incident_id"] = inc.incident_id
+            f["stream_id"] = int(stream_id)
+            f["group_id"] = f"{stream_id}:{inc.incident_id}"
             f["t_snapshot"] = float(events["ts"].to_numpy()[inc.rows[m - 1]])
             rows.append(f)
     return pd.DataFrame(rows)
@@ -83,11 +92,19 @@ def build_snapshots(events: pd.DataFrame, incidents: list[Incident],
 class ExposureForecaster:
     """Quantile regression on remaining attempts, with conformalised coverage.
 
-    Two quantile models (median and upper) are fitted on one half of the
-    calibration snapshots; the other half is used only to measure how far the
-    upper model actually falls short, and to widen it by that amount. Raw
-    quantile regression is routinely over-confident, and a stated 90% interval
-    that covers 60% of the time is worse than no interval at all.
+    Two quantile models (median and upper) are fitted on one subset of the
+    calibration data; a disjoint subset is used only to measure how far the
+    upper model falls short, and to widen it by that amount. Raw quantile
+    regression is routinely over-confident, and a stated 90% interval that
+    covers 60% of the time is worse than no interval at all.
+
+    **The split is by stream, never by snapshot row.** Snapshots of one
+    incident are nested prefixes of the same sequence and are therefore highly
+    dependent: putting one prefix in the fit set and another in the conformal
+    set measures the residual on data the model has effectively already seen,
+    which inflates apparent coverage without being a test-set leak. Whole
+    streams go to one side or the other, so the conformal pad is estimated on
+    incidents the quantile models never met.
     """
 
     def __init__(self, upper_q: float = 0.9, seed: int = 0):
@@ -95,15 +112,32 @@ class ExposureForecaster:
         self.seed = seed
         self.m50 = self.mhi = None
         self.conformal_pad = 0.0
+        self.fit_groups_: list = []
+        self.conformal_groups_: list = []
 
     def fit(self, snaps: pd.DataFrame) -> "ExposureForecaster":
         if snaps.empty:
             return self
         x, y = snaps[FEATURES].to_numpy(), snaps["remaining"].to_numpy()
+
+        # Partition by stream where available, else by stream-qualified
+        # incident. Never by row.
+        key = "stream_id" if "stream_id" in snaps else "group_id"
+        groups = snaps[key].to_numpy() if key in snaps else np.arange(len(y))
+        uniq = np.unique(groups)
         rng = np.random.default_rng(self.seed)
-        idx = rng.permutation(len(y))
-        cut = max(int(len(y) * 0.6), 1)
-        fit_i, cal_i = idx[:cut], idx[cut:]
+        order = rng.permutation(uniq)
+        n_fit = max(int(len(uniq) * 0.6), 1)
+        if len(uniq) > 1:
+            n_fit = min(n_fit, len(uniq) - 1)     # always leave a conformal set
+        fit_groups = set(order[:n_fit].tolist())
+        in_fit = np.array([g in fit_groups for g in groups])
+        fit_i = np.flatnonzero(in_fit)
+        cal_i = np.flatnonzero(~in_fit)
+        self.fit_groups_ = sorted(fit_groups)
+        self.conformal_groups_ = sorted(set(order[n_fit:].tolist()))
+        if fit_i.size == 0:                        # degenerate single group
+            fit_i, cal_i = np.arange(len(y)), np.array([], dtype=int)
 
         def _q(alpha, xi, yi):
             m = lgb.LGBMRegressor(objective="quantile", alpha=alpha,
@@ -117,8 +151,9 @@ class ExposureForecaster:
         self.mhi = _q(self.upper_q, x[fit_i], y[fit_i])
 
         if cal_i.size:
-            # Conformal residual: how far the upper model undershoots on data
-            # it never saw. Pad by that quantile so coverage matches the claim.
+            # Conformal residual: how far the upper model undershoots on
+            # INCIDENTS it never saw. Pad by that quantile so the stated
+            # coverage means something on genuinely new incidents.
             short = y[cal_i] - self.mhi.predict(x[cal_i])
             self.conformal_pad = float(max(np.quantile(short, self.upper_q), 0.0))
         return self

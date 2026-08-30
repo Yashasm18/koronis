@@ -2,7 +2,7 @@
 
 **Detecting distributed card-testing campaigns that per-entity velocity rules cannot see — at any threshold.**
 
-[![tests](https://img.shields.io/badge/tests-77%20passing-2ea44f)](tests/)
+[![tests](https://img.shields.io/badge/tests-79%20passing-2ea44f)](tests/)
 [![python](https://img.shields.io/badge/python-3.11%2B-3776ab)](https://www.python.org/)
 [![graph libs](https://img.shields.io/badge/graph%20libraries-none-8a3ffc)](koronis/models/layers.py)
 [![track](https://img.shields.io/badge/Razorpay%20Buildathon-Track%2002%20·%20AI%20Risk%20Manager-0c2451)](https://razorpay.com/buildathon/)
@@ -263,16 +263,29 @@ the separate question the incident risk model answers, and the policy multiplies
 expected remaining exposure  =  P(genuine) × forecast(remaining attempts) × ₹73
 ```
 
-The upper quantile is **conformalised** against held-out residuals, because raw quantile
-regression is routinely over-confident and a "90%" interval covering 60% of the time is
-worse than no interval at all.
+Raw quantile regression is routinely over-confident, so the upper quantile carries a
+**conformal pad fit on a held-out subset of calibration incidents; coverage is then
+evaluated on held-out test incidents.**
+
+That split is **by stream, never by snapshot row**. Snapshots of one incident are nested
+prefixes of the same sequence and are highly dependent — putting one prefix in the fit set
+and another in the conformal set measures the residual on data the model has effectively
+already seen. It is not a test-set leak, but it inflates apparent coverage. Splitting by
+row reported **91.8%**; splitting by stream reports the figure below. A test asserts no
+incident appears in both partitions, and that stream-qualified keys are used, since
+incident ids restart at `INC-000` for every stream.
 
 | | measured |
 |---|---|
-| P90 interval coverage | **91.8%** (target 90%) |
-| Median absolute error, P50 | 157.5 attempts |
+| P90 interval coverage | **99.0%** (target 90%) |
+| Median absolute error, P50 | 221.6 attempts |
 | Mean true remaining | 347.6 attempts |
-| Fitted / evaluated on | 85 calibration snapshots / 97 held-out |
+| Fit / conformal / evaluation | 4 streams / 4 streams / 97 held-out snapshots |
+
+**The interval over-covers.** 99% against a 90% target means it is wider than it needs to
+be — conservative, which is the safe direction for a policy that escalates on uncertainty,
+but not well calibrated. With only four conformal streams the pad quantile is coarsely
+estimated. Reported rather than tuned toward the target.
 
 **Campaign length is varied across streams** for this evaluation, and that is not a detail.
 With every campaign the same length, "remaining" collapses to a constant minus what you have
@@ -293,7 +306,7 @@ Median across 8 independent test streams:
 | oracle policy *(upper bound)* | 1 | 0 | 12 | ₹1,884 |
 
 **Action regret vs the oracle: ₹0 — the causal policy chooses the same action on 11 / 11
-incidents.** Despite a median forecast error of 157 attempts, the decision is unchanged,
+incidents.** Despite a median forecast error of 222 attempts, the decision is unchanged,
 because the cost gaps between actions are large relative to that error.
 
 That is the honest reading, and it comes with a caveat: on this distribution incidents are
