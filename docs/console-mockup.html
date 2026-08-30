@@ -5,164 +5,96 @@
 
 <style>
 :root{
-  --ground:#EEF1F5;
-  --panel:#FFFFFF;
-  --panel-2:#F5F7FA;
-  --line:#D3DAE4;
-  --line-soft:#E4E9F0;
-  --ink:#141922;
-  --ink-2:#4A5566;
-  --ink-3:#78849A;
-  --accent:#2C6BEF;
-  --accent-soft:rgba(44,107,239,.12);
-  --late:#C77A16;
-  --late-soft:rgba(199,122,22,.12);
-  --blind:#77839A;
-  --blind-soft:rgba(119,131,154,.12);
-  --loss:#D2382F;
-  --saved:#0E8A5F;
-  --node-legit:#9AA6BA;
-  --node-attack:#2C6BEF;
-  --edge-legit:rgba(154,166,186,.35);
-  --edge-attack:rgba(44,107,239,.45);
+  --ground:#EEF1F5; --panel:#FFFFFF; --panel-2:#F5F7FA;
+  --line:#D3DAE4; --line-soft:#E4E9F0;
+  --ink:#141922; --ink-2:#4A5566; --ink-3:#78849A;
+  --accent:#2C6BEF; --accent-soft:rgba(44,107,239,.12);
+  --late:#C77A16; --late-soft:rgba(199,122,22,.12);
+  --blind:#77839A; --blind-soft:rgba(119,131,154,.12);
+  --loss:#D2382F; --saved:#0E8A5F;
+  --node-legit:#9AA6BA; --node-attack:#2C6BEF;
+  --edge-legit:rgba(154,166,186,.35); --edge-attack:rgba(44,107,239,.45);
   --canvas-bg:#F8FAFC;
 }
 @media (prefers-color-scheme:dark){
   :root:not([data-theme="light"]){
-    --ground:#0C1016;
-    --panel:#141A23;
-    --panel-2:#1A212C;
-    --line:#2A3441;
-    --line-soft:#212934;
-    --ink:#E8EDF5;
-    --ink-2:#A2AEC0;
-    --ink-3:#6F7C90;
-    --accent:#5B94FF;
-    --accent-soft:rgba(91,148,255,.16);
-    --late:#E5A244;
-    --late-soft:rgba(229,162,68,.16);
-    --blind:#66748A;
-    --blind-soft:rgba(102,116,138,.16);
-    --loss:#FF6B60;
-    --saved:#3DD69B;
-    --node-legit:#4C5A70;
-    --node-attack:#5B94FF;
-    --edge-legit:rgba(76,90,112,.4);
-    --edge-attack:rgba(91,148,255,.5);
+    --ground:#0C1016; --panel:#141A23; --panel-2:#1A212C;
+    --line:#2A3441; --line-soft:#212934;
+    --ink:#E8EDF5; --ink-2:#A2AEC0; --ink-3:#6F7C90;
+    --accent:#5B94FF; --accent-soft:rgba(91,148,255,.16);
+    --late:#E5A244; --late-soft:rgba(229,162,68,.16);
+    --blind:#66748A; --blind-soft:rgba(102,116,138,.16);
+    --loss:#FF6B60; --saved:#3DD69B;
+    --node-legit:#4C5A70; --node-attack:#5B94FF;
+    --edge-legit:rgba(76,90,112,.4); --edge-attack:rgba(91,148,255,.5);
     --canvas-bg:#0F141B;
   }
 }
 :root[data-theme="dark"]{
-  --ground:#0C1016;
-  --panel:#141A23;
-  --panel-2:#1A212C;
-  --line:#2A3441;
-  --line-soft:#212934;
-  --ink:#E8EDF5;
-  --ink-2:#A2AEC0;
-  --ink-3:#6F7C90;
-  --accent:#5B94FF;
-  --accent-soft:rgba(91,148,255,.16);
-  --late:#E5A244;
-  --late-soft:rgba(229,162,68,.16);
-  --blind:#66748A;
-  --blind-soft:rgba(102,116,138,.16);
-  --loss:#FF6B60;
-  --saved:#3DD69B;
-  --node-legit:#4C5A70;
-  --node-attack:#5B94FF;
-  --edge-legit:rgba(76,90,112,.4);
-  --edge-attack:rgba(91,148,255,.5);
+  --ground:#0C1016; --panel:#141A23; --panel-2:#1A212C;
+  --line:#2A3441; --line-soft:#212934;
+  --ink:#E8EDF5; --ink-2:#A2AEC0; --ink-3:#6F7C90;
+  --accent:#5B94FF; --accent-soft:rgba(91,148,255,.16);
+  --late:#E5A244; --late-soft:rgba(229,162,68,.16);
+  --blind:#66748A; --blind-soft:rgba(102,116,138,.16);
+  --loss:#FF6B60; --saved:#3DD69B;
+  --node-legit:#4C5A70; --node-attack:#5B94FF;
+  --edge-legit:rgba(76,90,112,.4); --edge-attack:rgba(91,148,255,.5);
   --canvas-bg:#0F141B;
 }
 
 *{box-sizing:border-box}
-body{
-  margin:0;
-  background:var(--ground);
-  color:var(--ink);
+body{margin:0;background:var(--ground);color:var(--ink);
   font-family:"IBM Plex Sans",system-ui,-apple-system,sans-serif;
-  font-size:14px;
-  line-height:1.5;
-  -webkit-font-smoothing:antialiased;
-}
+  font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
 .wrap{max-width:1180px;margin:0 auto;padding:28px 20px 56px;display:flex;flex-direction:column;gap:16px}
 
-/* ---- header ---- */
 .head{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:16px}
-.brand{display:flex;flex-direction:column;gap:4px}
-.brand h1{
-  font-family:"IBM Plex Sans Condensed","IBM Plex Sans",sans-serif;
-  font-weight:700;font-size:30px;letter-spacing:-.01em;margin:0;line-height:1.1;
-}
+.brand h1{font-family:"IBM Plex Sans Condensed","IBM Plex Sans",sans-serif;
+  font-weight:700;font-size:30px;letter-spacing:-.01em;margin:0;line-height:1.1}
 .brand .sub{color:var(--ink-3);font-size:13px}
-.scenario{
-  font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:11px;
+.scenario{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:11px;
   letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);
-  border:1px solid var(--line);border-radius:3px;padding:6px 10px;background:var(--panel);
-}
-
-/* ---- controls ---- */
-.controls{display:flex;align-items:center;gap:10px}
-button{
-  font-family:"IBM Plex Sans Condensed","IBM Plex Sans",sans-serif;
-  font-weight:600;font-size:13px;letter-spacing:.03em;
-  background:var(--accent);color:#fff;border:0;border-radius:4px;
-  padding:9px 18px;cursor:pointer;
-}
+  border:1px solid var(--line);border-radius:3px;padding:6px 10px;background:var(--panel)}
+.controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+button{font-family:"IBM Plex Sans Condensed","IBM Plex Sans",sans-serif;
+  font-weight:600;font-size:13px;letter-spacing:.03em;background:var(--accent);
+  color:#fff;border:0;border-radius:4px;padding:9px 18px;cursor:pointer}
 button.ghost{background:transparent;color:var(--ink-2);border:1px solid var(--line)}
 button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
-/* ---- metric strip ---- */
-.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;background:var(--line-soft);border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;
+  background:var(--line-soft);border:1px solid var(--line);border-radius:6px;overflow:hidden}
 .metric{background:var(--panel);padding:14px 16px;display:flex;flex-direction:column;gap:5px}
-.metric .k{
-  font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:.1em;
-  text-transform:uppercase;color:var(--ink-3);
-}
-.metric .v{
-  font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;
-  font-size:24px;font-weight:500;letter-spacing:-.02em;
-}
-.v.loss{color:var(--loss)}
-.v.saved{color:var(--saved)}
+.metric .k{font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--ink-3)}
+.metric .v{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;
+  font-size:24px;font-weight:500;letter-spacing:-.02em}
+.v.loss{color:var(--loss)} .v.saved{color:var(--saved)}
 
-/* ---- main grid ---- */
 .grid{display:grid;grid-template-columns:1.25fr 1fr;gap:16px}
 @media (max-width:860px){.grid{grid-template-columns:1fr}}
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:6px;display:flex;flex-direction:column}
-.panel-head{
-  padding:12px 16px;border-bottom:1px solid var(--line-soft);
-  display:flex;align-items:baseline;justify-content:space-between;gap:12px;
-}
-.panel-head h2{
-  font-family:"IBM Plex Sans Condensed","IBM Plex Sans",sans-serif;
-  font-size:13px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;margin:0;
-}
+.panel-head{padding:12px 16px;border-bottom:1px solid var(--line-soft);
+  display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+.panel-head h2{font-family:"IBM Plex Sans Condensed","IBM Plex Sans",sans-serif;
+  font-size:13px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;margin:0}
 .panel-head .hint{font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--ink-3)}
 
-/* ---- canvas ---- */
 .stage{position:relative;background:var(--canvas-bg);border-radius:0 0 5px 5px;overflow:hidden}
-canvas{display:block;width:100%;height:340px}
-.legend{
-  position:absolute;left:14px;bottom:12px;display:flex;gap:14px;
-  font-family:"IBM Plex Mono",monospace;font-size:10px;color:var(--ink-3);
-}
+canvas{display:block;width:100%;height:330px}
+.legend{position:absolute;left:14px;bottom:12px;display:flex;gap:14px;
+  font-family:"IBM Plex Mono",monospace;font-size:10px;color:var(--ink-3)}
 .legend span{display:flex;align-items:center;gap:5px}
 .dot{width:7px;height:7px;border-radius:50%;display:inline-block}
 
-/* ---- detector lanes ---- */
-.lanes{padding:14px 16px;display:flex;flex-direction:column;gap:16px}
+.lanes{padding:14px 16px;display:flex;flex-direction:column;gap:15px}
 .lane{display:flex;flex-direction:column;gap:7px}
 .lane-top{display:flex;align-items:center;justify-content:space-between;gap:10px}
-.lane-name{
-  font-family:"IBM Plex Sans Condensed","IBM Plex Sans",sans-serif;
-  font-size:13px;font-weight:600;display:flex;align-items:center;gap:7px;
-}
-.chip{
-  font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:.06em;
-  text-transform:uppercase;padding:3px 8px;border-radius:3px;white-space:nowrap;
-}
+.lane-name{font-family:"IBM Plex Sans Condensed","IBM Plex Sans",sans-serif;
+  font-size:13px;font-weight:600;display:flex;align-items:center;gap:7px}
+.chip{font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:.06em;
+  text-transform:uppercase;padding:3px 8px;border-radius:3px;white-space:nowrap}
 .chip.blind{background:var(--blind-soft);color:var(--blind)}
 .chip.late{background:var(--late-soft);color:var(--late)}
 .chip.hit{background:var(--accent-soft);color:var(--accent)}
@@ -173,58 +105,36 @@ canvas{display:block;width:100%;height:340px}
 .fill.hit{background:var(--accent);opacity:.55}
 .mark{position:absolute;top:-4px;width:2px;height:16px;background:var(--ink);opacity:0;border-radius:1px}
 .mark.on{opacity:1}
-.lane-foot{
-  display:flex;justify-content:space-between;
+.lane-foot{display:flex;justify-content:space-between;gap:10px;
   font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--ink-3);
-  font-variant-numeric:tabular-nums;
-}
-.lane-foot .cost{color:var(--ink-2)}
+  font-variant-numeric:tabular-nums}
+.lane-foot b{color:var(--ink-2);font-weight:500}
+.fp{color:var(--loss)}
 
-/* ---- alert ---- */
-.alert{
-  margin:0 16px 16px;border:1px solid var(--accent);border-radius:5px;
-  background:var(--accent-soft);padding:14px 16px;
-  display:none;flex-direction:column;gap:10px;
-}
-.alert.on{display:flex}
-.alert-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
-.alert-head strong{
-  font-family:"IBM Plex Sans Condensed","IBM Plex Sans",sans-serif;
-  font-size:14px;letter-spacing:.04em;text-transform:uppercase;color:var(--accent);
-}
-.alert-head code{font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--ink-2)}
-.ev{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:10px}
-.ev div{display:flex;flex-direction:column;gap:2px}
-.ev .k{font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3)}
-.ev .v{font-family:"IBM Plex Mono",monospace;font-size:16px;font-variant-numeric:tabular-nums}
-.why{border-top:1px solid var(--line-soft);padding-top:10px;display:flex;flex-direction:column;gap:5px}
-.why p{margin:0;font-size:12.5px;color:var(--ink-2)}
-.why p b{color:var(--ink);font-weight:600}
+table{width:100%;border-collapse:collapse;font-family:"IBM Plex Mono",monospace;
+  font-size:11.5px;font-variant-numeric:tabular-nums}
+th,td{text-align:right;padding:7px 10px;border-bottom:1px solid var(--line-soft)}
+th:first-child,td:first-child{text-align:left}
+th{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);font-weight:500}
+tr:last-child td{border-bottom:0}
+td.win{color:var(--accent);font-weight:600}
+.tbl-wrap{overflow-x:auto;padding:4px 6px 10px}
 
-/* ---- frontier ---- */
 .frontier{display:grid;grid-template-columns:1.1fr 1fr;gap:0}
 @media (max-width:860px){.frontier{grid-template-columns:1fr}}
-#fr{height:300px}
-.fr-key{padding:16px 18px;display:flex;flex-direction:column;gap:14px;border-left:1px solid var(--line-soft)}
+#fr{height:290px}
+.fr-key{padding:16px 18px;display:flex;flex-direction:column;gap:13px;border-left:1px solid var(--line-soft)}
 @media (max-width:860px){.fr-key{border-left:0;border-top:1px solid var(--line-soft)}}
 .fr-key>div{display:grid;grid-template-columns:auto 1fr;gap:4px 9px;align-items:baseline}
-.fr-key b{
-  font-family:"IBM Plex Sans Condensed","IBM Plex Sans",sans-serif;
-  font-size:13px;letter-spacing:.03em;
-}
+.fr-key b{font-family:"IBM Plex Sans Condensed","IBM Plex Sans",sans-serif;font-size:13px;letter-spacing:.03em}
 .fr-key span{grid-column:2;font-size:12px;color:var(--ink-2);line-height:1.45}
 .fr-key .dot{width:8px;height:8px;margin-top:5px}
-.fr-note{
-  margin:0;padding-top:12px;border-top:1px solid var(--line-soft);
-  font-size:11.5px;color:var(--ink-3);line-height:1.5;
-}
+.fr-note{margin:0;padding-top:11px;border-top:1px solid var(--line-soft);
+  font-size:11.5px;color:var(--ink-3);line-height:1.5}
 .fr-note code{font-family:"IBM Plex Mono",monospace;color:var(--ink-2)}
+.fr-note b{color:var(--accent)}
 
-/* ---- foot ---- */
-.note{
-  border-top:1px solid var(--line);padding-top:14px;
-  font-size:12px;color:var(--ink-3);max-width:65ch;
-}
+.note{border-top:1px solid var(--line);padding-top:14px;font-size:12px;color:var(--ink-3);max-width:70ch}
 .note b{color:var(--ink-2);font-weight:600}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
@@ -234,20 +144,20 @@ canvas{display:block;width:100%;height:340px}
   <div class="head">
     <div class="brand">
       <h1>Koronis</h1>
-      <div class="sub">Card-testing ring detection · demo console</div>
+      <div class="sub">Distributed card-testing detection · measured run</div>
     </div>
     <div class="controls">
-      <div class="scenario">Held-out campaign · low-and-slow</div>
+      <div class="scenario">Held-out · n=400 · k=60 · camouflage 1.0</div>
       <button id="play">Replay attack</button>
       <button class="ghost" id="reset">Reset</button>
     </div>
   </div>
 
   <div class="metrics">
-    <div class="metric"><span class="k">Elapsed</span><span class="v" id="m-clock">T+00:00</span></div>
-    <div class="metric"><span class="k">Attempts seen</span><span class="v" id="m-att">0</span></div>
+    <div class="metric"><span class="k">Elapsed</span><span class="v" id="m-clock">00:00</span></div>
+    <div class="metric"><span class="k">Campaign attempts</span><span class="v" id="m-att">0</span></div>
     <div class="metric"><span class="k">Exposure burned</span><span class="v loss" id="m-burn">₹0</span></div>
-    <div class="metric"><span class="k">Prevented by Koronis</span><span class="v saved" id="m-saved">—</span></div>
+    <div class="metric"><span class="k">Koronis net benefit</span><span class="v saved" id="m-net">—</span></div>
   </div>
 
   <div class="grid">
@@ -269,17 +179,20 @@ canvas{display:block;width:100%;height:340px}
     <div class="panel">
       <div class="panel-head">
         <h2>Detector race</h2>
-        <span class="hint">12h window</span>
+        <span class="hint">60-minute campaign</span>
       </div>
 
       <div class="lanes">
         <div class="lane">
           <div class="lane-top">
-            <span class="lane-name"><i class="dot" style="background:var(--blind)"></i>Velocity rules</span>
+            <span class="lane-name"><i class="dot" style="background:var(--blind)"></i>Velocity rules, tuned</span>
             <span class="chip blind" id="c-vel">Never fires</span>
           </div>
           <div class="track"><i class="fill blind" id="f-vel"></i><i class="mark" id="k-vel"></i></div>
-          <div class="lane-foot"><span>Per-IP / per-card thresholds</span><span class="cost" id="x-vel">₹3,06,600 lost</span></div>
+          <div class="lane-foot">
+            <span>k=60 is past the blindness boundary</span>
+            <span><b id="x-vel">₹0 recovered</b></span>
+          </div>
         </div>
 
         <div class="lane">
@@ -288,35 +201,34 @@ canvas{display:block;width:100%;height:340px}
             <span class="chip late" id="c-gbdt">Waiting</span>
           </div>
           <div class="track"><i class="fill late" id="f-gbdt"></i><i class="mark" id="k-gbdt"></i></div>
-          <div class="lane-foot"><span>0.94 AUC, scores in isolation</span><span class="cost" id="x-gbdt">—</span></div>
+          <div class="lane-foot">
+            <span class="fp" id="fp-gbdt">0 false positives</span>
+            <span><b id="x-gbdt">—</b></span>
+          </div>
         </div>
 
         <div class="lane">
           <div class="lane-top">
-            <span class="lane-name"><i class="dot" style="background:var(--accent)"></i>Koronis</span>
-            <span class="chip hit" id="c-rf">Watching</span>
+            <span class="lane-name"><i class="dot" style="background:var(--accent)"></i>Koronis graph</span>
+            <span class="chip hit" id="c-kor">Watching</span>
           </div>
-          <div class="track"><i class="fill hit" id="f-rf"></i><i class="mark" id="k-rf"></i></div>
-          <div class="lane-foot"><span>Temporal relational graph</span><span class="cost" id="x-rf">—</span></div>
+          <div class="track"><i class="fill hit" id="f-kor"></i><i class="mark" id="k-kor"></i></div>
+          <div class="lane-foot">
+            <span class="fp" id="fp-kor">0 false positives</span>
+            <span><b id="x-kor">—</b></span>
+          </div>
         </div>
       </div>
 
-      <div class="alert" id="alert">
-        <div class="alert-head">
-          <strong>Ring detected</strong>
-          <code>ring_4f2a · T+00:11</code>
-        </div>
-        <div class="ev">
-          <div><span class="k">Attempts</span><span class="v">64</span></div>
-          <div><span class="k">Devices</span><span class="v">12</span></div>
-          <div><span class="k">ASNs</span><span class="v">3</span></div>
-          <div><span class="k">BIN ranges</span><span class="v">2</span></div>
-        </div>
-        <div class="why">
-          <p><b>Why:</b> 64 attempts across 47 distinct cards share only 12 device fingerprints — a reuse rate 31× above baseline.</p>
-          <p><b>Amounts</b> cluster in ₹1–₹9 with a 96% decline rate against 2 consecutive BIN ranges.</p>
-          <p><b>No single entity</b> crossed a velocity threshold. The signal is the overlap, not the volume.</p>
-        </div>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Precision</th><th>t=60s</th><th>t=300s</th><th>t=600s</th></tr></thead>
+          <tbody>
+            <tr><td>velocity</td><td>—</td><td>—</td><td>—</td></tr>
+            <tr><td>gbdt</td><td>0.50</td><td>0.83</td><td>1.00</td></tr>
+            <tr><td>koronis</td><td class="win">0.83</td><td class="win">1.00</td><td>1.00</td></tr>
+          </tbody>
+        </table>
       </div>
     </div>
 
@@ -325,174 +237,150 @@ canvas{display:block;width:100%;height:340px}
   <div class="panel">
     <div class="panel-head">
       <h2>Detectability frontier</h2>
-      <span class="hint">n attempts × k entities</span>
+      <span class="hint">measured · 16 / 16 agreement</span>
     </div>
     <div class="frontier">
-      <div class="stage" style="border-radius:0">
-        <canvas id="fr"></canvas>
-      </div>
+      <div class="stage" style="border-radius:0"><canvas id="fr"></canvas></div>
       <div class="fr-key">
-        <div><i class="dot" style="background:var(--blind)"></i><b>Velocity suffices</b><span>Low spread — some entity crosses τ. k &lt; n/τ.</span></div>
-        <div><i class="dot" style="background:var(--accent)"></i><b>Graph only</b><span>Every entity stays under τ, but reuse still creates ~n²/2k shared-entity pairs.</span></div>
-        <div><i class="dot" style="background:var(--loss)"></i><b>Uneconomic</b><span>Escaping the graph needs k→n — one fresh device per attempt. Costs more than the cards return.</span></div>
-        <p class="fr-note">Dashed line is the predicted boundary <code>k = n/τ</code>. Points are measured campaigns. The claim the project defends is that the measured boundary lands where the theory says it should.</p>
+        <div><i class="dot" style="background:var(--blind)"></i><b>Velocity fires</b>
+          <span>Some entity crosses τ=9. Predicted where <code>k &lt; n/τ</code>.</span></div>
+        <div><i class="dot" style="background:var(--accent)"></i><b>Koronis only</b>
+          <span>Every counter stays under threshold, but reuse still leaves ~n²/2k shared-entity pairs for the graph.</span></div>
+        <p class="fr-note">Dashed line is the predicted boundary <code>k = n/τ</code>, derived on
+        paper before the sweep ran. Points are measured campaigns; a hollow ring marks where
+        velocity went blind. Prediction and observation agree on
+        <b>all 16 cells</b>. Koronis detects in every one.</p>
       </div>
     </div>
   </div>
 
   <p class="note">
-    <b>Design target, not a build.</b> This is the frame the 5-minute pitch video is built around:
-    one attack replayed, three detectors racing, and the rupee counter making the cost of latency
-    visible. Figures are illustrative — ₹73 per attempt covers the authorization fee, amortized
-    network penalty, and downstream chargeback expectation, and gets declared as an assumption
-    in the cost model rather than presented as measured.
+    <b>Every figure here comes from <code>results/*.csv</code>.</b> The honest headline is not
+    that the per-transaction model is blind — it scores 0.920 PR-AUC. It is that GBDT fires
+    <b>32</b> false positives against Koronis's <b>8</b> to reach a worse result, and that
+    tuned velocity rules never fire at all at this spread. Costs of ₹73 per attempt and ₹40
+    per false block are declared assumptions, not measurements.
   </p>
 </div>
 
 <script>
 (function(){
   "use strict";
-  var TOTAL=720, RATE=350/60, COST=73;
-  var FIRE_RF=11, FIRE_GBDT=560;
-  var reduce=window.matchMedia("(prefers-reduced-motion:reduce)").matches;
+  // ---- measured constants, from results/ablation.csv and results/latency.csv ----
+  var TOTAL=3600, N_ATT=400, COST=73;          // 60-minute campaign, 400 attempts
+  var FIRE_GBDT=0.0, FIRE_KOR=16.3;            // detect_s
+  var FP_GBDT=32, FP_KOR=8, FP_VEL=7;          // false positives at cost-optimal threshold
+  var FPCOST=40;
+  var INR_GBDT=29127, INR_KOR=28762, INR_VEL=0;
+  var NET_KOR=INR_KOR-FP_KOR*FPCOST;
 
+  var reduce=window.matchMedia("(prefers-reduced-motion:reduce)").matches;
   var cv=document.getElementById("cv"), ctx=cv.getContext("2d");
   var t=0, playing=false, raf=null;
 
-  // deterministic pseudo-random
   var seed=7;
   function rnd(){seed=(seed*1664525+1013904223)%4294967296;return seed/4294967296;}
 
   var legit=[],attack=[],eLegit=[],eAttack=[];
   function build(){
     legit=[];attack=[];eLegit=[];eAttack=[];seed=7;
-    for(var i=0;i<95;i++){
-      legit.push({x:rnd(),y:rnd(),t:rnd()*TOTAL,r:1.6+rnd()*1.4});
-    }
-    for(var j=0;j<12;j++){
-      if(rnd()<.55) eLegit.push([Math.floor(rnd()*95),Math.floor(rnd()*95)]);
-    }
+    for(var i=0;i<95;i++) legit.push({x:rnd(),y:rnd(),t:rnd()*TOTAL,r:1.6+rnd()*1.4});
+    for(var j=0;j<14;j++) if(rnd()<.55) eLegit.push([Math.floor(rnd()*95),Math.floor(rnd()*95)]);
     var cx=.62,cy=.48;
-    for(var k=0;k<78;k++){
+    for(var k=0;k<80;k++){
       var a=rnd()*Math.PI*2, rad=Math.pow(rnd(),.62)*.19;
-      attack.push({x:cx+Math.cos(a)*rad*1.15,y:cy+Math.sin(a)*rad,t:(k/78)*TOTAL,r:1.9+rnd()*1.5});
+      attack.push({x:cx+Math.cos(a)*rad*1.15,y:cy+Math.sin(a)*rad,t:(k/80)*TOTAL,r:1.9+rnd()*1.5});
     }
-    for(var m=0;m<78;m++){
-      for(var n=0;n<2;n++){
-        var o=Math.floor(rnd()*78);
-        if(o!==m) eAttack.push([m,o]);
-      }
+    for(var m=0;m<80;m++) for(var n=0;n<2;n++){
+      var o=Math.floor(rnd()*80); if(o!==m) eAttack.push([m,o]);
     }
   }
   build();
 
-  function size(){
-    var d=window.devicePixelRatio||1, w=cv.clientWidth, h=cv.clientHeight;
-    cv.width=w*d; cv.height=h*d; ctx.setTransform(d,0,0,d,0,0);
-    return {w:w,h:h};
-  }
-
+  function size(){var d=window.devicePixelRatio||1,w=cv.clientWidth,h=cv.clientHeight;
+    cv.width=w*d;cv.height=h*d;ctx.setTransform(d,0,0,d,0,0);return{w:w,h:h};}
   function css(v){return getComputedStyle(document.documentElement).getPropertyValue(v).trim();}
 
   function draw(){
-    var s=size(), w=s.w, h=s.h, pad=22;
+    var s=size(),w=s.w,h=s.h,pad=22;
     ctx.clearRect(0,0,w,h);
-    var X=function(u){return pad+u*(w-pad*2);}, Y=function(u){return pad+u*(h-pad*2);};
-    var fired=t>=FIRE_RF;
+    var X=function(u){return pad+u*(w-pad*2);},Y=function(u){return pad+u*(h-pad*2);};
+    var fired=t>=FIRE_KOR;
 
-    ctx.strokeStyle=css("--edge-legit"); ctx.lineWidth=1;
-    eLegit.forEach(function(e){
-      var a=legit[e[0]],b=legit[e[1]];
-      if(a.t<=t&&b.t<=t){ctx.beginPath();ctx.moveTo(X(a.x),Y(a.y));ctx.lineTo(X(b.x),Y(b.y));ctx.stroke();}
-    });
+    ctx.strokeStyle=css("--edge-legit");ctx.lineWidth=1;
+    eLegit.forEach(function(e){var a=legit[e[0]],b=legit[e[1]];
+      if(a.t<=t&&b.t<=t){ctx.beginPath();ctx.moveTo(X(a.x),Y(a.y));ctx.lineTo(X(b.x),Y(b.y));ctx.stroke();}});
 
-    ctx.strokeStyle=css("--edge-attack"); ctx.lineWidth=fired?1.15:.9;
-    eAttack.forEach(function(e){
-      var a=attack[e[0]],b=attack[e[1]];
-      if(a.t<=t&&b.t<=t){ctx.beginPath();ctx.moveTo(X(a.x),Y(a.y));ctx.lineTo(X(b.x),Y(b.y));ctx.stroke();}
-    });
+    ctx.strokeStyle=css("--edge-attack");ctx.lineWidth=fired?1.15:.9;
+    eAttack.forEach(function(e){var a=attack[e[0]],b=attack[e[1]];
+      if(a.t<=t&&b.t<=t){ctx.beginPath();ctx.moveTo(X(a.x),Y(a.y));ctx.lineTo(X(b.x),Y(b.y));ctx.stroke();}});
 
     ctx.fillStyle=css("--node-legit");
-    legit.forEach(function(p){
-      if(p.t<=t){ctx.beginPath();ctx.arc(X(p.x),Y(p.y),p.r,0,6.284);ctx.fill();}
-    });
+    legit.forEach(function(p){if(p.t<=t){ctx.beginPath();ctx.arc(X(p.x),Y(p.y),p.r,0,6.284);ctx.fill();}});
 
     if(fired){
       var vis=attack.filter(function(p){return p.t<=t;});
       if(vis.length){
-        var xs=vis.map(function(p){return X(p.x);}), ys=vis.map(function(p){return Y(p.y);});
+        var xs=vis.map(function(p){return X(p.x);}),ys=vis.map(function(p){return Y(p.y);});
         var minx=Math.min.apply(null,xs),maxx=Math.max.apply(null,xs);
         var miny=Math.min.apply(null,ys),maxy=Math.max.apply(null,ys);
-        ctx.strokeStyle=css("--accent"); ctx.lineWidth=1.25;
-        ctx.setLineDash([5,4]); ctx.globalAlpha=.75;
-        var rx=(maxx-minx)/2+14, ry=(maxy-miny)/2+14;
+        ctx.strokeStyle=css("--accent");ctx.lineWidth=1.25;
+        ctx.setLineDash([5,4]);ctx.globalAlpha=.75;
         ctx.beginPath();
-        ctx.ellipse(minx+(maxx-minx)/2,miny+(maxy-miny)/2,rx,ry,0,0,6.284);
-        ctx.stroke();
-        ctx.setLineDash([]); ctx.globalAlpha=1;
+        ctx.ellipse(minx+(maxx-minx)/2,miny+(maxy-miny)/2,(maxx-minx)/2+14,(maxy-miny)/2+14,0,0,6.284);
+        ctx.stroke();ctx.setLineDash([]);ctx.globalAlpha=1;
       }
     }
-
     ctx.fillStyle=css("--node-attack");
-    attack.forEach(function(p){
-      if(p.t<=t){ctx.beginPath();ctx.arc(X(p.x),Y(p.y),p.r,0,6.284);ctx.fill();}
-    });
+    attack.forEach(function(p){if(p.t<=t){ctx.beginPath();ctx.arc(X(p.x),Y(p.y),p.r,0,6.284);ctx.fill();}});
   }
 
-  function inr(n){
-    n=Math.round(n);
-    var s=String(n), last=s.slice(-3), rest=s.slice(0,-3);
-    if(rest) rest=rest.replace(/\B(?=(\d{2})+(?!\d))/g,",");
-    return "₹"+(rest?rest+","+last:last);
-  }
-  function hhmm(mins){
-    var h=Math.floor(mins/60), m=Math.floor(mins%60);
-    return "T+"+String(h).padStart(2,"0")+":"+String(m).padStart(2,"0");
-  }
-
-  var TOTAL_LOSS=TOTAL*RATE*COST;
+  function inr(n){n=Math.round(n);var s=String(n),last=s.slice(-3),rest=s.slice(0,-3);
+    if(rest)rest=rest.replace(/\B(?=(\d{2})+(?!\d))/g,",");
+    return "₹"+(rest?rest+","+last:last);}
+  function mmss(sec){var m=Math.floor(sec/60),s=Math.floor(sec%60);
+    return String(m).padStart(2,"0")+":"+String(s).padStart(2,"0");}
 
   function render(){
-    var att=Math.floor(t*RATE), burn=att*COST, pct=t/TOTAL*100;
-
-    document.getElementById("m-clock").textContent=hhmm(t);
+    var frac=t/TOTAL, att=Math.floor(frac*N_ATT), pct=frac*100;
+    document.getElementById("m-clock").textContent=mmss(t);
     document.getElementById("m-att").textContent=att.toLocaleString("en-IN");
-    document.getElementById("m-burn").textContent=inr(burn);
+    document.getElementById("m-burn").textContent=inr(att*COST);
 
-    document.getElementById("f-vel").style.width=pct+"%";
-    document.getElementById("f-gbdt").style.width=pct+"%";
-    document.getElementById("f-rf").style.width=pct+"%";
+    ["vel","gbdt","kor"].forEach(function(id){
+      document.getElementById("f-"+id).style.width=pct+"%";
+    });
 
-    var rf=t>=FIRE_RF, gb=t>=FIRE_GBDT;
+    var gb=t>=FIRE_GBDT, ko=t>=FIRE_KOR;
+    var mg=document.getElementById("k-gbdt"), mk=document.getElementById("k-kor");
+    mg.style.left=(FIRE_GBDT/TOTAL*100)+"%"; mg.className="mark"+(gb?" on":"");
+    mk.style.left=(FIRE_KOR/TOTAL*100)+"%";  mk.className="mark"+(ko?" on":"");
 
-    document.getElementById("k-rf").style.left=(FIRE_RF/TOTAL*100)+"%";
-    document.getElementById("k-rf").className="mark"+(rf?" on":"");
-    document.getElementById("k-gbdt").style.left=(FIRE_GBDT/TOTAL*100)+"%";
-    document.getElementById("k-gbdt").className="mark"+(gb?" on":"");
+    document.getElementById("c-gbdt").textContent=gb?"Fired 0.0s":"Waiting";
+    document.getElementById("c-kor").textContent=ko?"Fired 16.3s":"Watching";
 
-    document.getElementById("c-rf").textContent=rf?"Fired T+00:11":"Watching";
-    document.getElementById("c-gbdt").textContent=gb?"Fired T+09:20":"Waiting";
+    // false positives accrue across the run
+    var fpg=Math.round(FP_GBDT*frac), fpk=Math.round(FP_KOR*frac);
+    document.getElementById("fp-gbdt").textContent=fpg+" false positives · "+inr(fpg*FPCOST);
+    document.getElementById("fp-kor").textContent=fpk+" false positives · "+inr(fpk*FPCOST);
 
-    var rfLoss=FIRE_RF*RATE*COST, gbLoss=FIRE_GBDT*RATE*COST;
-    document.getElementById("x-rf").textContent=rf?inr(rfLoss)+" lost":"—";
-    document.getElementById("x-gbdt").textContent=gb?inr(gbLoss)+" lost":"—";
-    document.getElementById("m-saved").textContent=rf?inr(TOTAL_LOSS-rfLoss):"—";
-    document.getElementById("alert").className="alert"+(rf?" on":"");
+    document.getElementById("x-vel").textContent=inr(INR_VEL)+" recovered";
+    document.getElementById("x-gbdt").textContent=gb?inr(INR_GBDT*frac)+" recovered":"—";
+    document.getElementById("x-kor").textContent=ko?inr(INR_KOR*frac)+" recovered":"—";
+    document.getElementById("m-net").textContent=ko?inr(NET_KOR*frac):"—";
 
     draw();
   }
 
   function loop(){
-    if(!playing) return;
-    t+=2.4;
+    if(!playing)return;
+    t+=12;
     if(t>=TOTAL){t=TOTAL;playing=false;document.getElementById("play").textContent="Replay attack";}
-    render();
-    raf=requestAnimationFrame(loop);
+    render();raf=requestAnimationFrame(loop);
   }
-
   document.getElementById("play").addEventListener("click",function(){
     if(playing){playing=false;this.textContent="Resume";cancelAnimationFrame(raf);return;}
-    if(t>=TOTAL) t=0;
+    if(t>=TOTAL)t=0;
     playing=true;this.textContent="Pause";loop();
   });
   document.getElementById("reset").addEventListener("click",function(){
@@ -500,95 +388,74 @@ canvas{display:block;width:100%;height:340px}
     document.getElementById("play").textContent="Replay attack";render();
   });
   window.addEventListener("resize",render);
-
-  if(reduce){ t=TOTAL; }
+  if(reduce)t=TOTAL;
   render();
 })();
 
-/* ---- detectability frontier ---- */
+/* ---- detectability frontier, from results/frontier.csv ---- */
 (function(){
   "use strict";
-  var cv=document.getElementById("fr"), ctx=cv.getContext("2d");
-  var TAU=40, XMIN=100, XMAX=20000, YMIN=1, YMAX=20000;
+  var cv=document.getElementById("fr"),ctx=cv.getContext("2d");
+  var TAU=9,XMIN=150,XMAX=2400,YMIN=1,YMAX=400;
   var PAD={l:44,r:16,t:16,b:30};
 
+  // n, k, velocity_detected — every row of results/frontier.csv
   var pts=[
-    {n:300,k:2,by:"vel"},   {n:800,k:5,by:"vel"},    {n:2000,k:12,by:"vel"},
-    {n:1200,k:40,by:"rf"},  {n:2500,k:90,by:"rf"},   {n:4200,k:130,by:"rf"},
-    {n:5000,k:400,by:"rf"}, {n:9000,k:800,by:"rf"},
-    {n:900,k:520,by:"none"},{n:1500,k:950,by:"none"}
+    {n:200,k:2,v:1},{n:200,k:10,v:1},{n:200,k:50,v:0},{n:200,k:200,v:0},
+    {n:400,k:2,v:1},{n:400,k:10,v:1},{n:400,k:50,v:0},{n:400,k:200,v:0},
+    {n:800,k:2,v:1},{n:800,k:10,v:1},{n:800,k:50,v:1},{n:800,k:200,v:0},
+    {n:1600,k:2,v:1},{n:1600,k:10,v:1},{n:1600,k:50,v:1},{n:1600,k:200,v:0}
   ];
-
   function css(v){return getComputedStyle(document.documentElement).getPropertyValue(v).trim();}
   function lg(v,a,b){return (Math.log(v)-Math.log(a))/(Math.log(b)-Math.log(a));}
 
   function draw(){
-    var d=window.devicePixelRatio||1, w=cv.clientWidth, h=cv.clientHeight;
-    cv.width=w*d; cv.height=h*d; ctx.setTransform(d,0,0,d,0,0);
-    ctx.clearRect(0,0,w,h);
-
-    var pw=w-PAD.l-PAD.r, ph=h-PAD.t-PAD.b;
+    var d=window.devicePixelRatio||1,w=cv.clientWidth,h=cv.clientHeight;
+    cv.width=w*d;cv.height=h*d;ctx.setTransform(d,0,0,d,0,0);ctx.clearRect(0,0,w,h);
+    var pw=w-PAD.l-PAD.r,ph=h-PAD.t-PAD.b;
     var X=function(n){return PAD.l+lg(n,XMIN,XMAX)*pw;};
     var Y=function(k){return PAD.t+(1-lg(Math.max(k,YMIN),YMIN,YMAX))*ph;};
 
-    // shaded regions, column by column
     for(var px=0;px<pw;px++){
       var n=Math.exp(Math.log(XMIN)+(px/pw)*(Math.log(XMAX)-Math.log(XMIN)));
-      var yb1=Y(Math.max(n/TAU,YMIN)), yb2=Y(Math.max(n*0.5,YMIN));
-      var x=PAD.l+px;
+      var yb=Y(Math.max(n/TAU,YMIN)),x=PAD.l+px;
       ctx.globalAlpha=.13;
-      ctx.fillStyle=css("--blind");
-      ctx.fillRect(x,yb1,1,PAD.t+ph-yb1);
-      ctx.fillStyle=css("--accent");
-      ctx.fillRect(x,yb2,1,Math.max(yb1-yb2,0));
-      ctx.fillStyle=css("--loss");
-      ctx.fillRect(x,PAD.t,1,Math.max(yb2-PAD.t,0));
+      ctx.fillStyle=css("--blind");ctx.fillRect(x,yb,1,PAD.t+ph-yb);
+      ctx.fillStyle=css("--accent");ctx.fillRect(x,PAD.t,1,Math.max(yb-PAD.t,0));
       ctx.globalAlpha=1;
     }
 
-    // axes
-    ctx.strokeStyle=css("--line"); ctx.lineWidth=1;
-    ctx.beginPath();
-    ctx.moveTo(PAD.l,PAD.t); ctx.lineTo(PAD.l,PAD.t+ph); ctx.lineTo(PAD.l+pw,PAD.t+ph);
-    ctx.stroke();
+    ctx.strokeStyle=css("--line");ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(PAD.l,PAD.t);ctx.lineTo(PAD.l,PAD.t+ph);
+    ctx.lineTo(PAD.l+pw,PAD.t+ph);ctx.stroke();
 
-    ctx.fillStyle=css("--ink-3");
-    ctx.font='10px "IBM Plex Mono", monospace';
-    [100,1000,10000].forEach(function(v){
-      ctx.textAlign="center";
-      ctx.fillText(v>=1000?(v/1000)+"k":String(v),X(v),PAD.t+ph+16);
-    });
-    [1,100,10000].forEach(function(v){
-      ctx.textAlign="right";
-      ctx.fillText(v>=1000?(v/1000)+"k":String(v),PAD.l-7,Y(v)+3);
-    });
-    ctx.textAlign="center";
-    ctx.fillText("n  attempts",PAD.l+pw/2,h-4);
-    ctx.save();
-    ctx.translate(11,PAD.t+ph/2); ctx.rotate(-Math.PI/2);
-    ctx.fillText("k  entities",0,0);
-    ctx.restore();
+    ctx.fillStyle=css("--ink-3");ctx.font='10px "IBM Plex Mono", monospace';
+    [200,800,1600].forEach(function(v){ctx.textAlign="center";
+      ctx.fillText(String(v),X(v),PAD.t+ph+16);});
+    [2,10,50,200].forEach(function(v){ctx.textAlign="right";
+      ctx.fillText(String(v),PAD.l-7,Y(v)+3);});
+    ctx.textAlign="center";ctx.fillText("n  attempts",PAD.l+pw/2,h-4);
+    ctx.save();ctx.translate(11,PAD.t+ph/2);ctx.rotate(-Math.PI/2);
+    ctx.fillText("k  entities",0,0);ctx.restore();
 
-    // predicted boundary k = n/tau
-    ctx.strokeStyle=css("--ink-2"); ctx.lineWidth=1.3; ctx.setLineDash([5,4]);
+    ctx.strokeStyle=css("--ink-2");ctx.lineWidth=1.3;ctx.setLineDash([5,4]);
     ctx.beginPath();
     for(var q=0;q<=pw;q++){
       var nn=Math.exp(Math.log(XMIN)+(q/pw)*(Math.log(XMAX)-Math.log(XMIN)));
       var yy=Y(Math.max(nn/TAU,YMIN));
-      if(q===0) ctx.moveTo(PAD.l+q,yy); else ctx.lineTo(PAD.l+q,yy);
+      if(q===0)ctx.moveTo(PAD.l+q,yy);else ctx.lineTo(PAD.l+q,yy);
     }
-    ctx.stroke(); ctx.setLineDash([]);
+    ctx.stroke();ctx.setLineDash([]);
 
-    // measured campaigns
     pts.forEach(function(p){
-      var c=p.by==="vel"?css("--blind"):p.by==="rf"?css("--accent"):css("--loss");
-      ctx.fillStyle=c;
-      ctx.beginPath(); ctx.arc(X(p.n),Y(p.k),4,0,6.284); ctx.fill();
-      ctx.strokeStyle=css("--panel"); ctx.lineWidth=1.5; ctx.stroke();
+      var x=X(p.n),y=Y(p.k);
+      ctx.beginPath();ctx.arc(x,y,4.5,0,6.284);
+      if(p.v){ctx.fillStyle=css("--blind");ctx.fill();
+        ctx.strokeStyle=css("--panel");ctx.lineWidth=1.5;ctx.stroke();}
+      else{ctx.fillStyle=css("--panel");ctx.fill();
+        ctx.strokeStyle=css("--accent");ctx.lineWidth=2;ctx.stroke();}
     });
   }
-
-  draw();
-  window.addEventListener("resize",draw);
+  draw();window.addEventListener("resize",draw);
 })();
 </script>
