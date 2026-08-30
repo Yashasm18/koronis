@@ -1,0 +1,601 @@
+<title>Koronis Risk Console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+
+<style>
+:root{
+  --ground:#EEF1F5; --panel:#FFFFFF; --panel-2:#F5F7FA; --panel-3:#EAEEF4;
+  --line:#D3DAE4; --line-soft:#E4E9F0;
+  --ink:#141922; --ink-2:#4A5566; --ink-3:#78849A;
+  --accent:#2C6BEF; --accent-soft:rgba(44,107,239,.12);
+  --watch:#C77A16; --watch-soft:rgba(199,122,22,.13);
+  --crit:#C22C22; --crit-soft:rgba(194,44,34,.12);
+  --calm:#5B6879; --calm-soft:rgba(91,104,121,.12);
+  --ok:#0E8A5F;
+  --node-legit:#A6B1C4; --node-attack:#2C6BEF;
+  --edge:rgba(44,107,239,.35); --canvas-bg:#F8FAFC;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --ground:#0B0F15; --panel:#131922; --panel-2:#19202B; --panel-3:#1F2733;
+  --line:#2A3441; --line-soft:#212934;
+  --ink:#E9EEF6; --ink-2:#A4B0C2; --ink-3:#6F7C90;
+  --accent:#5B94FF; --accent-soft:rgba(91,148,255,.16);
+  --watch:#E5A244; --watch-soft:rgba(229,162,68,.16);
+  --crit:#FF6B60; --crit-soft:rgba(255,107,96,.15);
+  --calm:#66748A; --calm-soft:rgba(102,116,138,.16);
+  --ok:#3DD69B;
+  --node-legit:#46536A; --node-attack:#5B94FF;
+  --edge:rgba(91,148,255,.4); --canvas-bg:#0E131A;
+}}
+:root[data-theme="dark"]{
+  --ground:#0B0F15; --panel:#131922; --panel-2:#19202B; --panel-3:#1F2733;
+  --line:#2A3441; --line-soft:#212934;
+  --ink:#E9EEF6; --ink-2:#A4B0C2; --ink-3:#6F7C90;
+  --accent:#5B94FF; --accent-soft:rgba(91,148,255,.16);
+  --watch:#E5A244; --watch-soft:rgba(229,162,68,.16);
+  --crit:#FF6B60; --crit-soft:rgba(255,107,96,.15);
+  --calm:#66748A; --calm-soft:rgba(102,116,138,.16);
+  --ok:#3DD69B;
+  --node-legit:#46536A; --node-attack:#5B94FF;
+  --edge:rgba(91,148,255,.4); --canvas-bg:#0E131A;
+}
+
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);
+  font-family:"IBM Plex Sans",system-ui,-apple-system,sans-serif;font-size:14px;
+  line-height:1.5;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1200px;margin:0 auto;padding:26px 20px 60px;display:flex;flex-direction:column;gap:14px}
+h1,h2,h3{font-family:"IBM Plex Sans Condensed","IBM Plex Sans",sans-serif;margin:0;text-wrap:balance}
+.mono{font-family:"IBM Plex Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums}
+
+/* header */
+.head{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:14px}
+.head h1{font-size:29px;font-weight:700;letter-spacing:-.01em;line-height:1.1}
+.head .sub{color:var(--ink-3);font-size:13px;margin-top:3px}
+.subset{font-family:"IBM Plex Mono",monospace;font-size:10.5px;color:var(--ink-3);
+  border:1px solid var(--line);border-left:2px solid var(--watch);border-radius:3px;
+  padding:6px 10px;background:var(--panel);max-width:44ch;line-height:1.45}
+
+/* tabs */
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line)}
+.tabs button{font-family:"IBM Plex Sans Condensed","IBM Plex Sans",sans-serif;
+  font-size:13px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;
+  background:none;border:0;border-bottom:2px solid transparent;color:var(--ink-3);
+  padding:10px 14px;cursor:pointer}
+.tabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent)}
+.tabs button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.tab{display:none;flex-direction:column;gap:14px}
+.tab.on{display:flex}
+
+/* controls + metrics */
+.bar{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+button.act{font-family:"IBM Plex Sans Condensed","IBM Plex Sans",sans-serif;font-weight:600;
+  font-size:13px;letter-spacing:.03em;background:var(--accent);color:#fff;border:0;
+  border-radius:4px;padding:9px 18px;cursor:pointer}
+button.act.ghost{background:transparent;color:var(--ink-2);border:1px solid var(--line)}
+button.act:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.stage{font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.06em;
+  text-transform:uppercase;padding:6px 11px;border-radius:3px;border:1px solid transparent}
+.stage.s0{background:var(--calm-soft);color:var(--calm);border-color:var(--calm-soft)}
+.stage.s1{background:var(--watch-soft);color:var(--watch);border-color:var(--watch)}
+.stage.s2{background:var(--accent-soft);color:var(--accent);border-color:var(--accent)}
+.stage.s3{background:var(--crit-soft);color:var(--crit);border-color:var(--crit)}
+
+.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));gap:1px;
+  background:var(--line-soft);border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.metric{background:var(--panel);padding:12px 14px;display:flex;flex-direction:column;gap:4px}
+.metric .k{font-family:"IBM Plex Mono",monospace;font-size:9.5px;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--ink-3)}
+.metric .v{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;
+  font-size:22px;font-weight:500;letter-spacing:-.02em}
+
+/* panels */
+.grid{display:grid;grid-template-columns:1.35fr 1fr;gap:14px}
+.grid3{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media (max-width:900px){.grid,.grid3{grid-template-columns:1fr}}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:6px;
+  display:flex;flex-direction:column;overflow:hidden}
+.ph{padding:11px 15px;border-bottom:1px solid var(--line-soft);display:flex;
+  align-items:baseline;justify-content:space-between;gap:10px}
+.ph h2{font-size:12.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase}
+.ph .hint{font-family:"IBM Plex Mono",monospace;font-size:10.5px;color:var(--ink-3)}
+canvas{display:block;width:100%;background:var(--canvas-bg)}
+#chart{height:210px} #graph{height:250px}
+
+/* feed */
+.feed{height:250px;overflow-y:auto;font-family:"IBM Plex Mono",monospace;font-size:11px}
+.feed .row{display:grid;grid-template-columns:52px 1fr 62px 54px;gap:8px;padding:5px 14px;
+  border-bottom:1px solid var(--line-soft);align-items:center}
+.feed .row.alert{background:var(--crit-soft)}
+.feed .row.camp{color:var(--ink)} .feed .row{color:var(--ink-3)}
+.feed .amt{text-align:right;color:var(--ink-2)}
+.feed .tag{font-size:9.5px;letter-spacing:.05em;text-transform:uppercase;text-align:right}
+.feed .tag.dec{color:var(--crit)} .feed .tag.app{color:var(--ok)}
+
+/* evidence card */
+.card{padding:15px;display:flex;flex-direction:column;gap:12px}
+.card .lead{display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.card .lead strong{font-family:"IBM Plex Sans Condensed","IBM Plex Sans",sans-serif;
+  font-size:15px;letter-spacing:.02em}
+.ev{display:grid;grid-template-columns:repeat(auto-fit,minmax(88px,1fr));gap:9px}
+.ev div{display:flex;flex-direction:column;gap:2px;background:var(--panel-2);
+  border-radius:4px;padding:8px 10px}
+.ev .k{font-family:"IBM Plex Mono",monospace;font-size:9.5px;letter-spacing:.07em;
+  text-transform:uppercase;color:var(--ink-3)}
+.ev .v{font-family:"IBM Plex Mono",monospace;font-size:17px;font-variant-numeric:tabular-nums}
+.why{font-size:12.5px;color:var(--ink-2);line-height:1.55}
+.why b{color:var(--ink);font-weight:600}
+.ladder{display:flex;flex-direction:column;gap:6px;border-top:1px solid var(--line-soft);padding-top:11px}
+.ladder .lk{font-family:"IBM Plex Mono",monospace;font-size:9.5px;letter-spacing:.09em;
+  text-transform:uppercase;color:var(--ink-3)}
+.rung{display:grid;grid-template-columns:16px 1fr;gap:9px;align-items:baseline;
+  font-size:12.5px;color:var(--ink-3)}
+.rung.on{color:var(--ink)} .rung.on .dot{background:var(--accent)}
+.rung .dot{width:8px;height:8px;border-radius:50%;background:var(--line);margin-top:5px}
+.rung.warn.on .dot{background:var(--crit)}
+
+/* tables */
+.tbl{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-family:"IBM Plex Mono",monospace;
+  font-size:11.5px;font-variant-numeric:tabular-nums}
+th,td{text-align:right;padding:8px 12px;border-bottom:1px solid var(--line-soft);white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+th{font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);font-weight:500}
+tr:last-child td{border-bottom:0}
+tr.hl td{background:var(--accent-soft);color:var(--ink);font-weight:600}
+td.rng{color:var(--ink-3);font-size:10.5px}
+
+/* prose */
+.prose{padding:16px 18px;display:flex;flex-direction:column;gap:11px;max-width:74ch}
+.prose h3{font-size:13px;letter-spacing:.05em;text-transform:uppercase;color:var(--ink)}
+.prose p{margin:0;font-size:13px;color:var(--ink-2);line-height:1.6}
+.prose p b{color:var(--ink);font-weight:600}
+.prose ul{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px}
+.prose li{font-size:13px;color:var(--ink-2);line-height:1.55}
+.prose code{font-family:"IBM Plex Mono",monospace;font-size:11.5px;color:var(--ink)}
+.foot{border-top:1px solid var(--line);padding-top:13px;font-size:11.5px;color:var(--ink-3)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+
+<div class="wrap">
+  <div class="head">
+    <div>
+      <h1>Koronis</h1>
+      <div class="sub">Distributed card-testing detection · replay of a held-out campaign</div>
+    </div>
+    <div class="subset" id="subset-note"></div>
+  </div>
+
+  <div class="tabs" role="tablist">
+    <button role="tab" aria-selected="true" data-tab="replay">Replay</button>
+    <button role="tab" aria-selected="false" data-tab="eval">Evaluation</button>
+    <button role="tab" aria-selected="false" data-tab="method">Method &amp; limitations</button>
+  </div>
+
+  <!-- ───────────────────────── replay ───────────────────────── -->
+  <section class="tab on" id="tab-replay">
+    <div class="bar">
+      <button class="act" id="play">Replay incident</button>
+      <button class="act ghost" id="reset">Reset</button>
+      <span class="stage s0" id="stage">Idle</span>
+      <span class="mono" style="color:var(--ink-3);font-size:11px" id="scenario"></span>
+    </div>
+
+    <div class="metrics">
+      <div class="metric"><span class="k">Elapsed</span><span class="v" id="m-clock">00:00</span></div>
+      <div class="metric"><span class="k">Events scored</span><span class="v" id="m-seen">0</span></div>
+      <div class="metric"><span class="k">Risk score</span><span class="v" id="m-score">—</span></div>
+      <div class="metric"><span class="k">Alerts</span><span class="v" id="m-alerts">0</span></div>
+      <div class="metric"><span class="k">Velocity rules</span><span class="v" id="m-vel" style="font-size:15px">Quiet</span></div>
+    </div>
+
+    <div class="grid">
+      <div class="panel">
+        <div class="ph"><h2>Risk score vs frozen threshold</h2>
+          <span class="hint" id="thr-hint"></span></div>
+        <canvas id="chart"></canvas>
+      </div>
+      <div class="panel">
+        <div class="ph"><h2>Live event feed</h2><span class="hint">newest first</span></div>
+        <div class="feed" id="feed"></div>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="panel">
+        <div class="ph"><h2>Evidence graph</h2>
+          <span class="hint">schematic layout, real link counts</span></div>
+        <canvas id="graph"></canvas>
+      </div>
+      <div class="panel">
+        <div class="ph"><h2>Assessment</h2><span class="hint" id="card-t"></span></div>
+        <div class="card">
+          <div class="lead"><strong id="card-title">Awaiting traffic</strong>
+            <span class="mono" id="card-score" style="color:var(--ink-3)"></span></div>
+          <div class="ev" id="card-ev"></div>
+          <div class="why" id="card-why">Press <b>Replay incident</b> to stream the held-out campaign one event at a time.</div>
+          <div class="ladder">
+            <span class="lk">Recommended action</span>
+            <div class="rung" id="r0"><i class="dot"></i><span><b>Monitor</b> — no action, continue scoring</span></div>
+            <div class="rung" id="r1"><i class="dot"></i><span><b>Rate-limit</b> the linked entities</span></div>
+            <div class="rung warn" id="r2"><i class="dot"></i><span><b>Step-up verification</b> on matching attempts, and queue for analyst review</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────────────────────── evaluation ───────────────────────── -->
+  <section class="tab" id="tab-eval">
+    <div class="panel">
+      <div class="ph"><h2>Held-out detection</h2><span class="hint" id="seeds-hint"></span></div>
+      <div class="tbl"><table id="t-seeds"></table></div>
+    </div>
+    <div class="panel">
+      <div class="ph"><h2>Which mechanism carries the signal</h2>
+        <span class="hint" id="mech-hint"></span></div>
+      <div class="tbl"><table id="t-mech"></table></div>
+      <div class="prose" style="padding-top:0">
+        <p><b>Both mechanisms matter, and they do different jobs.</b> Strip the graph edges and
+        the model still alerts on the first declined authorisation — at far lower precision and
+        many times the false positives. Strip the authorisation outcome and the first alert
+        arrives later, because coordination has to accumulate first, but precision recovers.
+        Remove both and there is nothing left, so no third signal source is hiding in the
+        features.</p>
+      </div>
+    </div>
+    <div class="grid3">
+      <div class="panel">
+        <div class="ph"><h2>Per-event inference</h2><span class="hint" id="bench-hint"></span></div>
+        <div class="tbl"><table id="t-bench"></table></div>
+      </div>
+      <div class="panel">
+        <div class="ph"><h2>Detectability frontier</h2><span class="hint" id="front-hint"></span></div>
+        <div class="tbl"><table id="t-front"></table></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────────────────────── method ───────────────────────── -->
+  <section class="tab" id="tab-method">
+    <div class="grid3">
+      <div class="panel"><div class="ph"><h2>What this is</h2></div><div class="prose">
+        <p>Koronis detects <b>coordinated card-testing campaigns</b>: attempts that are
+        individually ambiguous but share enough infrastructure to form measurable temporal
+        structure. It is a detector, not a general fraud model.</p>
+        <h3>The sequence it actually follows</h3>
+        <ul>
+          <li><b>A declined authorisation</b> raises risk on its own — early, and noisy.</li>
+          <li><b>Related events accumulate</b>, and shared devices, IPs and BIN ranges start
+          linking them together.</li>
+          <li><b>Coordination becomes decisive</b>, and the alert reaches a precision an
+          operations team can act on.</li>
+        </ul>
+        <h3>Post-authorisation limitation</h3>
+        <p>The outcome of an attempt is observed only <b>after</b> it is submitted. No detector
+        can prevent the attempt it learns from. The value is in stopping the attempts that
+        follow, which is why detection latency is reported at all.</p>
+      </div></div>
+      <div class="panel"><div class="ph"><h2>Limitations</h2></div><div class="prose">
+        <h3>Semi-synthetic data</h3>
+        <p>Background traffic and campaigns are generated, not observed. Ground truth exists
+        because it was constructed. The hold-out extrapolates to a campaign spread wider than
+        anything in training, but that is not the same as detecting a campaign in the wild.</p>
+        <h3>What it will not catch</h3>
+        <p>An attacker who uses genuinely fresh infrastructure for every single attempt leaves
+        no graph signal. That limit is real — and it is also the point: driving spread that
+        far costs one device, IP and BIN per attempt.</p>
+        <h3>Cost figures are assumptions</h3>
+        <p>Rupee amounts are declared constants, not measurements, and they assume detection
+        halts a campaign immediately. Read them as the <b>cost of latency</b>, not guaranteed
+        savings.</p>
+        <h3>Defence-only</h3>
+        <p>No network capability anywhere in the codebase, no live payment integration, no real
+        card data, no real BIN ranges. The campaign generator produces labelled test data from
+        in-memory frames and reproduces only characteristics already published in Visa's
+        anti-enumeration guidance.</p>
+      </div></div>
+    </div>
+    <p class="foot" id="foot"></p>
+  </section>
+</div>
+
+<script id="koronis-data" type="application/json">/*__KORONIS_DATA__*/null</script>
+<script>
+(function(){
+"use strict";
+var D = JSON.parse(document.getElementById("koronis-data").textContent);
+var EV = D.replay.events, M = D.replay.meta;
+var THR = M.threshold, T_END = EV[EV.length - 1].t, T_START = EV[0].t;
+var reduce = matchMedia("(prefers-reduced-motion:reduce)").matches;
+
+/* stage cut-points, derived from the replayed data rather than chosen */
+var ST = {watch: 1, build: 15, alert: 40};
+
+function css(v){return getComputedStyle(document.documentElement).getPropertyValue(v).trim();}
+function mmss(s){s=Math.max(s,0);var m=Math.floor(s/60);return String(m).padStart(2,"0")+":"+String(Math.floor(s%60)).padStart(2,"0");}
+function num(x){return Number(x).toLocaleString("en-IN");}
+function el(id){return document.getElementById(id);}
+
+/* ── static text from metadata ─────────────────────────────── */
+el("subset-note").textContent = M.subset.note;
+el("scenario").textContent = "held-out · n=" + M.test_morphology.n_attempts +
+  " · k=" + M.test_morphology.k + " · camouflage " + M.test_morphology.camouflage;
+el("thr-hint").textContent = "threshold " + THR.toFixed(4) + " (frozen on calibration)";
+el("foot").textContent = M.subset.note + "  Subset rule: " + M.subset.rule +
+  ". Generated by " + M.generated_by + ".";
+
+/* ── tabs ──────────────────────────────────────────────────── */
+document.querySelectorAll(".tabs button").forEach(function(b){
+  b.addEventListener("click", function(){
+    document.querySelectorAll(".tabs button").forEach(function(x){x.setAttribute("aria-selected","false");});
+    b.setAttribute("aria-selected","true");
+    document.querySelectorAll(".tab").forEach(function(s){s.classList.remove("on");});
+    el("tab-" + b.dataset.tab).classList.add("on");
+    if(b.dataset.tab === "replay"){drawChart(); drawGraph();}
+  });
+});
+
+/* ── tables, built from the embedded artifacts ─────────────── */
+function table(node, cols, rows, hlKey){
+  var h = "<thead><tr>" + cols.map(function(c){return "<th>"+c.h+"</th>";}).join("") + "</tr></thead><tbody>";
+  rows.forEach(function(r){
+    var hl = hlKey && String(r[hlKey.k]) === hlKey.v;
+    h += "<tr"+(hl?' class="hl"':"")+">" + cols.map(function(c){
+      return "<td"+(c.cls?' class="'+c.cls+'"':"")+">"+c.f(r)+"</td>";}).join("") + "</tr>";
+  });
+  node.innerHTML = h + "</tbody>";
+}
+function f3(v){return v===""||v==null||isNaN(v)?"—":Number(v).toFixed(3);}
+function rng(lo,hi){return (lo===""||lo==null||isNaN(lo))?"":"["+Number(lo).toFixed(3)+", "+Number(hi).toFixed(3)+"]";}
+
+table(el("t-seeds"), [
+  {h:"detector", f:function(r){return r.detector;}},
+  {h:"PR-AUC", f:function(r){return f3(r.pr_auc_median);}},
+  {h:"range", cls:"rng", f:function(r){return rng(r.pr_auc_lo95,r.pr_auc_hi95);}},
+  {h:"precision", f:function(r){return f3(r.precision_median);}},
+  {h:"recall", f:function(r){return f3(r.recall_median);}},
+  {h:"false pos.", f:function(r){return Math.round(r.false_positives_median);}},
+  {h:"detected", f:function(r){return Math.round(Number(r.detected_rate)*100)+"%";}},
+], D.seeds, {k:"detector", v:"koronis_graph"});
+el("seeds-hint").textContent = D.seeds[0].n_trials + " trials · median and observed range across runs";
+
+table(el("t-mech"), [
+  {h:"variant", f:function(r){return r.variant;}},
+  {h:"PR-AUC", f:function(r){return f3(r.pr_auc_median);}},
+  {h:"precision", f:function(r){return f3(r.precision_median);}},
+  {h:"recall", f:function(r){return f3(r.recall_median);}},
+  {h:"false pos.", f:function(r){return Math.round(r.false_positives_median);}},
+  {h:"first alert", f:function(r){var v=r.detect_s_median;
+      return (v===""||v==null||isNaN(v))?"never":Number(v).toFixed(1)+" s";}},
+], D.mech, {k:"variant", v:"koronis_full"});
+el("mech-hint").textContent = D.mech[0].n_trials + " trials · medians";
+
+table(el("t-bench"), [
+  {h:"metric", f:function(r){return r.k;}}, {h:"value", f:function(r){return r.v;}},
+], [
+  {k:"p50", v:D.bench.p50_ms.toFixed(2)+" ms"},
+  {k:"p95", v:D.bench.p95_ms.toFixed(2)+" ms"},
+  {k:"p99", v:D.bench.p99_ms.toFixed(2)+" ms"},
+  {k:"throughput", v:Math.round(D.bench.throughput_eps)+" events/sec"},
+]);
+el("bench-hint").textContent = num(D.bench.n_measured)+" events after "+D.bench.n_warmup+" warm-up";
+
+var agree = D.frontier.filter(function(r){
+  return (r.velocity_blind_predicted==="True") === (r.velocity_detected==="False");}).length;
+table(el("t-front"), [
+  {h:"n", f:function(r){return r.n;}}, {h:"k", f:function(r){return r.k;}},
+  {h:"boundary n/τ", cls:"rng", f:function(r){return Number(r.predicted_k_boundary).toFixed(0);}},
+  {h:"predicted", f:function(r){return r.velocity_blind_predicted==="True"?"blind":"fires";}},
+  {h:"measured", f:function(r){return r.velocity_detected==="True"?"fires":"blind";}},
+  {h:"koronis", f:function(r){return r.koronis_detected==="True"?"detects":"—";}},
+], D.frontier);
+el("front-hint").textContent = "prediction matches observation on "+agree+" / "+D.frontier.length+" cells";
+
+/* ── replay state ──────────────────────────────────────────── */
+var i = 0, t = T_START, playing = false, raf = null;
+var seen = [], alerts = 0, lastAlert = null, stage = 0;
+
+function stageFor(ring){
+  if(ring >= ST.alert) return 3;
+  if(ring >= ST.build) return 2;
+  if(ring >= ST.watch) return 1;
+  return 0;
+}
+var STAGE_TEXT = [
+  ["Idle", "s0"],
+  ["Elevated risk — monitoring", "s1"],
+  ["Coordination emerging", "s2"],
+  ["High-confidence campaign", "s3"],
+];
+
+function setStage(s){
+  stage = s;
+  el("stage").textContent = STAGE_TEXT[s][0];
+  el("stage").className = "stage " + STAGE_TEXT[s][1];
+  el("r0").className = "rung" + (s >= 0 ? " on" : "");
+  el("r1").className = "rung" + (s >= 2 ? " on" : "");
+  el("r2").className = "rung warn" + (s >= 3 ? " on" : "");
+}
+
+function feedRow(e){
+  var cls = "row" + (e.alert ? " alert" : "") + (e.campaign ? " camp" : "");
+  return '<div class="'+cls+'"><span>'+(e.t<0?"-":"")+mmss(Math.abs(e.t))+'</span>' +
+    '<span>score '+e.score.toFixed(3)+' · '+e.linked+' links</span>' +
+    '<span class="amt">₹'+e.amount.toFixed(0)+'</span>' +
+    '<span class="tag '+(e.approved?"app":"dec")+'">'+(e.approved?"appr":"declined")+'</span></div>';
+}
+
+function updateCard(e){
+  if(!e){return;}
+  el("card-t").textContent = "t = " + e.t.toFixed(1) + " s";
+  el("card-score").textContent = "score " + e.score.toFixed(3) + " / thr " + THR.toFixed(3);
+  var ev = e.ev;
+  el("card-ev").innerHTML =
+    '<div><span class="k">Linked attempts</span><span class="v">'+e.linked+'</span></div>' +
+    '<div><span class="k">Device links</span><span class="v">'+ev.device_id+'</span></div>' +
+    '<div><span class="k">IP links</span><span class="v">'+ev.ip_id+'</span></div>' +
+    '<div><span class="k">BIN links</span><span class="v">'+ev.bin_id+'</span></div>' +
+    '<div><span class="k">Alerts in window</span><span class="v">'+e.ring+'</span></div>';
+
+  var titles = ["Awaiting traffic", "Elevated risk", "Coordination emerging", "Campaign confirmed"];
+  el("card-title").textContent = titles[stage];
+  var why;
+  if(stage <= 1){
+    why = "A <b>declined authorisation</b> on an otherwise ordinary attempt — plausible amount, "+
+      "common email domain. This is per-event evidence, and on its own it is weak: legitimate "+
+      "traffic declines too. <b>No action yet.</b>";
+  } else if(stage === 2){
+    why = "Attempts are now <b>linking to each other</b> through shared devices, IPs and BIN "+
+      "ranges — "+e.linked+" prior events on this one alone, "+e.ring+" alerts inside the window. "+
+      "Coordination is what separates this from ordinary declines.";
+  } else {
+    why = "<b>"+e.ring+" linked alerts</b> inside the window, connected by "+ev.device_id+
+      " device, "+ev.ip_id+" IP and "+ev.bin_id+" BIN relations. No single attempt here is "+
+      "remarkable; the <b>overlap</b> is. Velocity rules remain silent — every entity stays "+
+      "under threshold.";
+  }
+  el("card-why").innerHTML = why;
+}
+
+function render(){
+  el("m-clock").textContent = (t<0?"-":"") + mmss(Math.abs(t));
+  el("m-seen").textContent = num(seen.length);
+  el("m-alerts").textContent = num(alerts);
+  var last = seen.length ? seen[seen.length-1] : null;
+  el("m-score").textContent = last ? last.score.toFixed(3) : "—";
+  var velFired = seen.some(function(e){return e.vel_alert;});
+  el("m-vel").textContent = velFired ? "Fired" : "Quiet";
+  el("m-vel").style.color = velFired ? "var(--crit)" : "var(--ink-3)";
+  el("feed").innerHTML = seen.slice(-40).reverse().map(feedRow).join("");
+  updateCard(lastAlert || last);
+  drawChart(); drawGraph();
+}
+
+/* ── chart ─────────────────────────────────────────────────── */
+var cc = el("chart"), cx = cc.getContext("2d");
+function drawChart(){
+  var d = devicePixelRatio||1, w = cc.clientWidth, h = cc.clientHeight;
+  cc.width = w*d; cc.height = h*d; cx.setTransform(d,0,0,d,0,0);
+  cx.clearRect(0,0,w,h);
+  var P = {l:38,r:12,t:14,b:22}, pw = w-P.l-P.r, ph = h-P.t-P.b;
+  var X = function(tt){return P.l + (tt-T_START)/(T_END-T_START)*pw;};
+  var Y = function(s){return P.t + (1-s)*ph;};
+
+  cx.strokeStyle = css("--line"); cx.lineWidth = 1;
+  cx.beginPath(); cx.moveTo(P.l,P.t); cx.lineTo(P.l,P.t+ph); cx.lineTo(P.l+pw,P.t+ph); cx.stroke();
+  cx.fillStyle = css("--ink-3"); cx.font = '10px "IBM Plex Mono", monospace';
+  cx.textAlign="right"; [0,0.5,1].forEach(function(v){cx.fillText(v.toFixed(1), P.l-6, Y(v)+3);});
+  cx.textAlign="center";
+  [0, 900, 1800, 2700, 3600].forEach(function(v){
+    if(v>=T_START&&v<=T_END) cx.fillText(mmss(v), X(v), P.t+ph+15);});
+
+  /* frozen threshold */
+  cx.strokeStyle = css("--crit"); cx.setLineDash([5,4]); cx.lineWidth = 1.2;
+  cx.beginPath(); cx.moveTo(P.l, Y(THR)); cx.lineTo(P.l+pw, Y(THR)); cx.stroke();
+  cx.setLineDash([]);
+  cx.fillStyle = css("--crit"); cx.textAlign="left";
+  cx.fillText("frozen threshold", P.l+5, Y(THR)-5);
+
+  /* velocity stays at its own (flat) level */
+  cx.strokeStyle = css("--calm"); cx.lineWidth = 1.4; cx.beginPath();
+  seen.forEach(function(e,j){var yy=Y(0.02); j?cx.lineTo(X(e.t),yy):cx.moveTo(X(e.t),yy);});
+  cx.stroke();
+
+  /* koronis score */
+  cx.fillStyle = css("--accent");
+  seen.forEach(function(e){
+    cx.globalAlpha = e.campaign ? 0.85 : 0.35;
+    cx.beginPath(); cx.arc(X(e.t), Y(e.score), e.alert?2.4:1.5, 0, 6.284); cx.fill();
+  });
+  cx.globalAlpha = 1;
+}
+
+/* ── evidence graph ────────────────────────────────────────── */
+var gc = el("graph"), gx = gc.getContext("2d"), gpos = {};
+function seeded(n){var s=n*9301+49297;return ((s%233280)/233280);}
+function drawGraph(){
+  var d = devicePixelRatio||1, w = gc.clientWidth, h = gc.clientHeight;
+  gc.width = w*d; gc.height = h*d; gx.setTransform(d,0,0,d,0,0);
+  gx.clearRect(0,0,w,h);
+  var pad = 18, shown = seen.slice(-160);
+
+  shown.forEach(function(e,j){
+    if(!gpos[e.t]){
+      var a = seeded(j*7+1)*6.283, r = Math.pow(seeded(j*13+5),0.6);
+      gpos[e.t] = e.campaign
+        ? {x:0.62 + Math.cos(a)*r*0.20, y:0.50 + Math.sin(a)*r*0.30}
+        : {x:seeded(j*3+2), y:seeded(j*5+9)};
+    }
+  });
+  var X=function(u){return pad+u*(w-pad*2);}, Y=function(u){return pad+u*(h-pad*2);};
+
+  gx.strokeStyle = css("--edge"); gx.lineWidth = 0.9;
+  var camp = shown.filter(function(e){return e.campaign;});
+  camp.forEach(function(e,j){
+    if(!e.linked) return;
+    var k = Math.min(3, Math.max(1, Math.round(e.linked/24)));
+    for(var q=1;q<=k;q++){
+      var o = camp[j-q]; if(!o) break;
+      var a=gpos[e.t], b=gpos[o.t]; if(!a||!b) continue;
+      gx.beginPath(); gx.moveTo(X(a.x),Y(a.y)); gx.lineTo(X(b.x),Y(b.y)); gx.stroke();
+    }
+  });
+  shown.forEach(function(e){
+    var p = gpos[e.t]; if(!p) return;
+    gx.fillStyle = e.campaign ? css("--node-attack") : css("--node-legit");
+    gx.globalAlpha = e.campaign ? 0.95 : 0.5;
+    gx.beginPath(); gx.arc(X(p.x), Y(p.y), e.alert?3.2:2, 0, 6.284); gx.fill();
+  });
+  gx.globalAlpha = 1;
+
+  if(stage >= 2 && camp.length){
+    var xs = camp.map(function(e){return X(gpos[e.t].x);});
+    var ys = camp.map(function(e){return Y(gpos[e.t].y);});
+    var x0=Math.min.apply(null,xs), x1=Math.max.apply(null,xs);
+    var y0=Math.min.apply(null,ys), y1=Math.max.apply(null,ys);
+    gx.strokeStyle = css(stage>=3?"--crit":"--accent"); gx.lineWidth = 1.3;
+    gx.setLineDash([5,4]); gx.globalAlpha = 0.8;
+    gx.beginPath();
+    gx.ellipse((x0+x1)/2,(y0+y1)/2,(x1-x0)/2+13,(y1-y0)/2+13,0,0,6.284);
+    gx.stroke(); gx.setLineDash([]); gx.globalAlpha = 1;
+  }
+}
+
+/* ── loop ──────────────────────────────────────────────────── */
+function step(){
+  if(!playing) return;
+  t += 26;
+  while(i < EV.length && EV[i].t <= t){
+    var e = EV[i++];
+    seen.push(e);
+    if(e.alert){alerts++; lastAlert = e;}
+    var s = stageFor(e.ring);
+    if(s !== stage) setStage(s);
+  }
+  if(i >= EV.length){t = T_END; playing = false; el("play").textContent = "Replay incident";}
+  render();
+  raf = requestAnimationFrame(step);
+}
+el("play").addEventListener("click", function(){
+  if(playing){playing=false; this.textContent="Resume"; cancelAnimationFrame(raf); return;}
+  if(i >= EV.length) doReset();
+  playing = true; this.textContent = "Pause"; step();
+});
+el("reset").addEventListener("click", doReset);
+function doReset(){
+  playing=false; cancelAnimationFrame(raf);
+  i=0; t=T_START; seen=[]; alerts=0; lastAlert=null; gpos={};
+  el("play").textContent = "Replay incident"; setStage(0); render();
+  el("card-why").innerHTML = "Press <b>Replay incident</b> to stream the held-out campaign one event at a time.";
+  el("card-title").textContent = "Awaiting traffic";
+}
+addEventListener("resize", function(){drawChart(); drawGraph();});
+
+setStage(0); render();
+if(reduce){ seen = EV.slice(); alerts = EV.filter(function(e){return e.alert;}).length;
+  lastAlert = EV.filter(function(e){return e.alert;}).pop(); t = T_END; i = EV.length;
+  setStage(3); render(); }
+})();
+</script>
