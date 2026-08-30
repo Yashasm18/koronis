@@ -85,25 +85,45 @@ Koronis detects in all sixteen. Reproduce with `python -m koronis.cli frontier`.
 
 ## Results
 
-Trained only on campaigns concentrated enough that a tuned velocity engine still catches
-them (`k ∈ {4, 12, 30}`, below the boundary of ~44), across three camouflage levels.
-Tested on a campaign spread **past** the boundary, fully camouflaged, from a different
-seed with entirely unseen entities. The hold-out is **extrapolation**, not interpolation.
+**Three splits, and the threshold never sees the test set.**
 
-| detector | **precision** | **recall** | PR-AUC | detect | false positives | FP cost | ₹ prevented | **net ₹** | ECE |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| `velocity_tuned` | 0.000 | 0.000 | 0.063 | **never** | 7 | ₹280 | ₹0 | **−₹280** | 0.068 |
-| `gbdt_per_txn` | 0.919 | 0.913 | 0.920 | 0.0 s | 32 | ₹1,280 | ₹29,127 | **₹27,847** | 0.017 |
-| **`koronis_graph`** | **0.980** | **0.975** | **0.997** | 16.3 s | **8** | **₹320** | ₹28,762 | **₹28,442** | **0.0013** |
+| split | contents | used for |
+|---|---|---|
+| train (seed 0) | `k ∈ {4, 12, 30}` × `camouflage ∈ {0, 0.5, 1}` | fitting model weights |
+| calibration (seed 2) | same distribution as train | **choosing the operating threshold, then frozen** |
+| test (seed 1) | `k = 60`, `camouflage = 1.0` | reported numbers only |
 
-Precision and recall are at the cost-optimal operating point; PR-AUC is the threshold-free
-summary. Campaign exposure if never stopped: ₹29,200.
+Training contains only campaigns concentrated enough that a tuned velocity engine still
+catches them (`k ≤ 30`, below the boundary of ~44). The test campaign is spread **past**
+that boundary, fully camouflaged, with entirely unseen entities — so the hold-out is
+**extrapolation**, not interpolation.
 
-**Read this carefully, because the honest claim is narrower than the obvious one.** The
-per-transaction model is *not* blind — it reaches 0.919 precision and 0.913 recall. What it
-does is fire **four times the false positives** (32 vs 8) to get there, and still lands
-below Koronis on both. Velocity rules are the ones that fail outright, exactly where
-Claim 1 says they must.
+| detector | **precision** | **recall** | PR-AUC | detect | false positives | FP cost | ECE |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| `velocity_tuned` | 0.000 | 0.000 | 0.063 | **never** | 71 | ₹2,840 | 0.068 |
+| `decline_burst` *(no graph, no learning)* | 0.700 | 0.993 | 0.540 | 10.4 s | 170 | ₹6,800 | 0.075 |
+| `shared_entity` *(graph, no learning)* | 0.141 | 0.920 | 0.889 | 72.8 s | 2,246 | ₹89,840 | 0.080 |
+| `gbdt_per_txn` | 0.823 | 0.920 | 0.920 | 0.0 s | 79 | ₹3,160 | 0.017 |
+| **`koronis_graph`** | **0.963** | **0.978** | **0.997** | 14.8 s | **15** | **₹600** | **0.0013** |
+
+Campaign exposure if never stopped: ₹29,200.
+
+**Three things this table says, none of them the obvious one.**
+
+*The per-transaction model is not blind.* It reaches 0.823 precision and 0.920 recall. What
+it does is fire **five times the false positives** (79 vs 15) and still land below Koronis
+on both.
+
+*The graph signal is real without any learning — and unusable on its own.* Plain
+inverse-frequency co-occurrence counting (`shared_entity`) reaches PR-AUC **0.889**, so the
+structure genuinely carries the signal. But at an operating threshold it fires **2,246**
+false positives. The network is not decorative: it is what turns diffuse graph signal into
+an actionable operating point.
+
+*Calibration is doing real work.* Every threshold here is chosen on the calibration split
+and frozen. GBDT's transfers badly to the unseen morphology (precision falls to 0.823);
+Koronis's holds. An ECE of 0.0013 means its scores behave like probabilities, so a
+threshold means what its number implies.
 
 Calibration matters here too. An ECE of 0.0013 means Koronis's scores behave like
 probabilities, so a threshold means what its number implies; at 0.017 the GBDT's does not,
@@ -121,6 +141,9 @@ Precision and recall if you had only seen the stream up to `t` seconds after ons
 
 At one minute Koronis is already precise enough to act on. That is the whole point:
 **when you detect determines how much you save.**
+
+*(Latency figures use a fixed 99th-percentile operating point rather than the frozen
+calibration threshold, so they are comparable across detectors at equal alert volume.)*
 
 ## How it works
 
@@ -166,6 +189,20 @@ loss = ((1 - p) * labels * c_fn + p * (1 - labels) * c_fp).mean()
 The business objective *is* the training objective, rather than a threshold repaired
 afterwards.
 
+## What this does not claim
+
+Koronis does not identify every fraudulent payment, and it is not a general fraud model.
+It detects **coordinated card-testing campaigns where individual events remain ambiguous
+but shared infrastructure creates measurable temporal structure**.
+
+An attacker who uses genuinely fresh infrastructure for every single attempt — a new
+device, a new IP and a new BIN each time — leaves no graph signal, and Koronis will not
+find them. That is a real limit, and it is also the point of Claim 2: driving `k → n`
+costs the attacker one unit of infrastructure per attempt, which is the economic bound the
+detector pushes them against.
+
+This is a **semi-synthetic proof of concept**, not production fraud detection. See below.
+
 ## What is assumed, not measured
 
 Stated plainly, because a result is only as good as its caveats.
@@ -178,9 +215,12 @@ Stated plainly, because a result is only as good as its caveats.
   training, but this is not the same as detecting a campaign in the wild.
 - **Cost constants are estimates.** ₹73 per attempt and ₹40 per false block are declared
   in [`cost.py`](koronis/eval/cost.py) with reasoning. Substitute your own and rerun.
-- **`money_prevented` assumes detection halts the campaign instantly.** What it really
-  measures is the *cost of latency* — how much more you lose per minute of delay — not
-  guaranteed savings.
+- **`money_prevented` assumes detection halts the campaign instantly.** It is therefore
+  *estimated avoidable exposure under stated assumptions*, not guaranteed savings. A real
+  merchant workflow is a ladder — flag, then rate-limit or step-up verification, then a
+  temporary hold, then analyst review — and each rung takes time and lets more attempts
+  through. Read the figure as the **cost of latency**: how much more is lost per minute of
+  delay.
 - **BIN thresholds are optimistic for the baseline.** Real BIN ranges carry heavy
   legitimate volume, so `τ_bin` would sit far above the 9 measured here. That makes the
   baseline stronger than reality, which is the safe direction.

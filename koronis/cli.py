@@ -18,6 +18,7 @@ from .eval.calibration import cost_optimal_threshold, expected_calibration_error
 from .eval.cost import COST_PER_ATTEMPT_INR, COST_PER_FALSE_BLOCK_INR
 from .eval.latency import detection_times, exposure, latency_curve, money_prevented
 from .models.gbdt import GBDTDetector
+from .models.heuristic import DeclineBurstDetector, SharedEntityDetector
 from .models.koronis import KoronisDetector
 from .models.velocity import MultiEntityVelocityDetector, tune_velocity
 
@@ -49,6 +50,19 @@ def _dataset(seed: int, k: int, camouflage: float = 0.0) -> pd.DataFrame:
                         duration_s=WINDOW_S, start_ts=float(bg["ts"].iloc[500]),
                         camouflage=camouflage)
     return inject(bg, [spec], seed=seed)
+
+
+def _calibration_set() -> pd.DataFrame:
+    """A third split, drawn from the TRAINING distribution, used only to pick
+    the operating threshold.
+
+    Choosing a threshold with test labels optimises detection time, false
+    positives and rupees prevented against the answers - the operating-point
+    results stop being held out. Calibration comes from the same distribution
+    as training because that is what a deployed system would actually have:
+    you tune on attacks you have already seen, then meet a new one.
+    """
+    return _train_set(seed=2)
 
 
 def _train_set(seed: int = 0) -> pd.DataFrame:
@@ -85,22 +99,31 @@ def _fit_all(train: pd.DataFrame):
 
 def ablation() -> pd.DataFrame:
     train = _train_set(0)
+    calib = _calibration_set()
     test = _dataset(1, TEST_K, TEST_CAMO)
     taus, gbdt, kor = _fit_all(train)
     y = test["label"].to_numpy()
+    y_cal = calib["label"].to_numpy()
 
-    scored = {
-        "velocity_tuned": MultiEntityVelocityDetector(taus, WINDOW_S).score_events(test),
-        "gbdt_per_txn": gbdt.score_events(test),
-        "koronis_graph": kor.score_events(test),
+    scorers = {
+        "velocity_tuned": MultiEntityVelocityDetector(taus, WINDOW_S).score_events,
+        "decline_burst": DeclineBurstDetector().score_events,
+        "shared_entity": SharedEntityDetector(window_s=WINDOW_S).score_events,
+        "gbdt_per_txn": gbdt.score_events,
+        "koronis_graph": kor.score_events,
     }
+
+    def score(detector_name, frame):
+        return scorers[detector_name](frame)
 
     total = exposure(test, "camp_0")
     rows = []
-    for name, raw in scored.items():
-        s = _normalise(raw)
-        thr, _ = cost_optimal_threshold(s, y, COST_PER_ATTEMPT_INR,
-                                        COST_PER_FALSE_BLOCK_INR)
+    for name in scorers:
+        # Threshold is chosen on calibration and FROZEN before test is touched.
+        thr, _ = cost_optimal_threshold(
+            _normalise(score(name, calib)), y_cal,
+            COST_PER_ATTEMPT_INR, COST_PER_FALSE_BLOCK_INR)
+        s = _normalise(score(name, test))
         fired = s >= thr
         dt = detection_times(test, s, thr)["camp_0"]
         rows.append({
@@ -123,8 +146,9 @@ def ablation() -> pd.DataFrame:
     df = pd.DataFrame(rows)
     RESULTS.mkdir(exist_ok=True)
     df.to_csv(RESULTS / "ablation.csv", index=False)
-    print(f"\ntrain: k in {TRAIN_KS} x camo in {TRAIN_CAMOS} | "
-          f"test: k={TEST_K} camo={TEST_CAMO} (extrapolated) | taus={taus}")
+    print(f"\ntrain: k in {TRAIN_KS} x camo in {TRAIN_CAMOS} (seed 0) | "
+          f"calibration: same distribution (seed 2), thresholds frozen here | "
+          f"\ntest: k={TEST_K} camo={TEST_CAMO} seed 1 (extrapolated) | taus={taus}")
     print(df.to_string(index=False))
     print(f"\nrelation attention: {kor.relation_attention()}")
     return df

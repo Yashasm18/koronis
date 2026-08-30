@@ -33,6 +33,28 @@ def sweep(n_values: list[int], k_values: list[int], fp_budget: float,
     """
     bg = load_background(path=None, n_rows=n_background, seed=seed)
     taus = tune_velocity(bg, window_s=window_s, fp_budget=fp_budget)
+
+    # Fit the graph model ONCE, on its own training stream, then evaluate every
+    # cell without refitting. Fitting on each cell's own stream and scoring the
+    # same stream would make the graph half of this result non-held-out - the
+    # velocity half is a rule and never fits, so it was always clean.
+    train_bg = load_background(path=None, n_rows=n_background, seed=seed + 100)
+    train_specs = [
+        CampaignSpec(n_attempts=400, k_devices=k, k_ips=k, n_bins=k,
+                     duration_s=window_s,
+                     start_ts=float(train_bg["ts"].min()
+                                    + (train_bg["ts"].max() - train_bg["ts"].min())
+                                    * (0.1 + 0.25 * i)),
+                     camouflage=c)
+        for i, (k, c) in enumerate([(4, 0.0), (12, 0.5), (30, 1.0)])
+    ]
+    train = inject(train_bg, train_specs, seed=seed + 100)
+    model = KoronisDetector(seed=seed, window_s=window_s)
+    model.fit(train, epochs=60)
+
+    # Operating threshold frozen on the training stream, never on a test cell.
+    tr_scores = model.score_events(train)
+    thr = float(np.quantile(tr_scores, 1.0 - train["label"].mean()))
     # The binding constraint is the most permissive counter: the campaign is
     # blind to the engine only once it clears every one of them.
     tau_max = max(taus[e] for e in VELOCITY_ENTITIES)
@@ -47,16 +69,15 @@ def sweep(n_values: list[int], k_values: list[int], fp_budget: float,
             y = ev["label"].to_numpy() == 1
 
             vel = MultiEntityVelocityDetector(taus, window_s).score_events(ev)
-            model = KoronisDetector(seed=seed, window_s=window_s)
-            model.fit(ev, epochs=30)
-            kor = model.score_events(ev)
+            kor = model.score_events(ev)          # frozen model, unseen stream
 
             boundary = predicted_boundary_k(n, tau_max)
             rows.append({
                 "n": n,
                 "k": k,
                 "velocity_detected": bool(vel[y].max() > 0),
-                "koronis_detected": bool(kor[y].mean() > kor[~y].mean()),
+                # Same criterion as velocity: did any campaign event fire?
+                "koronis_detected": bool((kor[y] >= thr).any()),
                 "predicted_k_boundary": boundary,
                 "velocity_blind_predicted": bool(k >= boundary),
                 "tau_max": tau_max,
