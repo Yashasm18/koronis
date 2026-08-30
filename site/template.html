@@ -207,6 +207,7 @@ td.rng{color:var(--ink-3);font-size:10.5px}
     </div>
 
     <p class="incbar" id="incbar"></p>
+    <p class="incbar" id="fcast"></p>
 
     <div class="grid">
       <div class="panel">
@@ -272,6 +273,18 @@ td.rng{color:var(--ink-3);font-size:10.5px}
         times the triage.</b> Consolidation, not detection, is the difference. Always-hold
         escalates false incidents and costs more than doing nothing. All action costs and
         effectiveness figures are declared assumptions, not measurements.</p>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="ph"><h2>Remaining-exposure forecast</h2>
+        <span class="hint" id="fc-hint"></span></div>
+      <div class="tbl"><table id="t-fc"></table></div>
+      <div class="prose" style="padding-top:0">
+        <p>The policy is not allowed to know the future. It sees the first events of an
+        incident and a <b>conformalised</b> forecast of what is still ahead. Coverage is
+        measured, not claimed. <b>Campaign lengths vary across streams</b> — with a fixed
+        length, "remaining" is a constant minus what you have seen and a forecaster scores
+        brilliantly while learning nothing.</p>
       </div>
     </div>
     <div class="panel">
@@ -436,6 +449,20 @@ table(el("t-policy"), [
 ], POL.across_streams, {k:"policy", v:"incident_policy"});
 el("policy-hint").textContent = "median across "+POL.n_streams+" independent test streams";
 
+var FC = POL.forecast;
+table(el("t-fc"), [
+  {h:"metric", f:function(r){return r.k;}}, {h:"value", f:function(r){return r.v;}},
+], [
+  {k:"P90 interval coverage", v:(FC.coverage_upper*100).toFixed(1)+"%  (target "+
+     (FC.target_coverage*100).toFixed(0)+"%)"},
+  {k:"median abs error (P50)", v:FC.median_abs_err_p50+" attempts"},
+  {k:"mean true remaining", v:FC.mean_true_remaining+" attempts"},
+  {k:"action regret vs oracle", v:"₹"+num(Math.round(POL.summary[0].regret_vs_oracle_inr))},
+  {k:"actions matching oracle", v:POL.summary[0].actions_matching_oracle+" / "+POL.detail.length},
+]);
+el("fc-hint").textContent = POL.n_calibration_snapshots+" calibration snapshots · "+
+  FC.n_snapshots+" held-out";
+
 table(el("t-rel"), [
   {h:"predicted", f:function(r){return f3(r.predicted);}},
   {h:"observed", f:function(r){return f3(r.observed);}},
@@ -519,6 +546,16 @@ function updateCard(e){
       num(Math.round(PRIME.remaining_exposure_inr))+"</span>"
     : "<span>no incident open</span>";
 
+  /* Forecast panel: what the policy believed at decision time, using only the
+     first N events. The oracle number is shown alongside so a viewer can see
+     the error the decision survived. */
+  el("fcast").innerHTML = campAlerts
+    ? "decided after <b>"+PRIME.observed_at_decision+"</b> events · forecast remaining "+
+      "<b>₹"+num(Math.round(PRIME.forecast_exposure_p50_inr))+"</b> "+
+      "(P90 ₹"+num(Math.round(PRIME.forecast_exposure_p90_inr))+") · "+
+      "actual ₹"+num(Math.round(PRIME.true_remaining_exposure_inr))+
+      (PRIME.forecast_uncertain?" · <b>wide interval → escalate to review</b>":"")
+    : "";
   var costs = PRIME.option_costs, best = PRIME.action;
   var order = ["monitor","rate_limit","step_up","hold_review"];
   var reached = {0:["monitor"],1:["monitor"],
@@ -534,7 +571,8 @@ function updateCard(e){
   el("assum").textContent = stage >= 3
     ? "Lowest expected cost wins: " + ACTION_LABEL[best] + ". Costs and effectiveness are "
       + "declared assumptions in koronis/incident.py; the action is a recommendation in a "
-      + "simulated workflow, not a live block."
+      + "simulated workflow, not a live block. The remaining-exposure input is a "
+      + "forecast from the observed prefix, never the true future."
     : "Expected costs shown for the open incident. No action is recommended until the "
       + "evidence supports one.";
 
