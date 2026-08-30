@@ -1,4 +1,4 @@
-detector,pr_auc,threshold,detect_s,false_positives,fp_cost_inr,inr_prevented,inr_exposure,ece
-velocity_tuned,0.0625,0.6667,,7,280.0,0.0,29200.0,0.0678
-gbdt_per_txn,0.9202,0.9009,0.0,32,1280.0,29127.0,29200.0,0.017
-koronis_graph,0.9965,0.5152,16.3,8,320.0,28762.0,29200.0,0.0013
+detector,precision,recall,pr_auc,threshold,detect_s,false_positives,fp_cost_inr,inr_prevented,inr_exposure,ece
+velocity_tuned,0.0,0.0,0.0625,0.6667,,7,280.0,0.0,29200.0,0.0678
+gbdt_per_txn,0.9194,0.9125,0.9202,0.9009,0.0,32,1280.0,29127.0,29200.0,0.017
+koronis_graph,0.9799,0.975,0.9965,0.5152,16.3,8,320.0,28762.0,29200.0,0.0013

@@ -9,7 +9,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from sklearn.metrics import average_precision_score
+from sklearn.metrics import average_precision_score, precision_score, recall_score
 
 from .data.background import load_background
 from .data.campaigns import inject
@@ -101,10 +101,15 @@ def ablation() -> pd.DataFrame:
         s = _normalise(raw)
         thr, _ = cost_optimal_threshold(s, y, COST_PER_ATTEMPT_INR,
                                         COST_PER_FALSE_BLOCK_INR)
-        dt = detection_times(test, s, thr)["camp_0"]
         fired = s >= thr
+        dt = detection_times(test, s, thr)["camp_0"]
         rows.append({
             "detector": name,
+            # The brief asks for precision and recall on a held-out test set;
+            # both are reported at the cost-optimal operating point, with
+            # PR-AUC alongside as the threshold-free summary.
+            "precision": round(float(precision_score(y, fired, zero_division=0)), 4),
+            "recall": round(float(recall_score(y, fired, zero_division=0)), 4),
             "pr_auc": round(float(average_precision_score(y, s)), 4),
             "threshold": round(thr, 4),
             "detect_s": None if dt is None else round(dt, 1),

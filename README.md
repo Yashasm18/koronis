@@ -90,18 +90,20 @@ them (`k ∈ {4, 12, 30}`, below the boundary of ~44), across three camouflage l
 Tested on a campaign spread **past** the boundary, fully camouflaged, from a different
 seed with entirely unseen entities. The hold-out is **extrapolation**, not interpolation.
 
-| detector | PR-AUC | detect | false positives | FP cost | ₹ prevented | **net ₹** | ECE |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| `velocity_tuned` | 0.063 | **never** | 7 | ₹280 | ₹0 | **−₹280** | 0.068 |
-| `gbdt_per_txn` | 0.920 | 0.0 s | 32 | ₹1,280 | ₹29,127 | **₹27,847** | 0.017 |
-| **`koronis_graph`** | **0.997** | 16.3 s | **8** | **₹320** | ₹28,762 | **₹28,442** | **0.0013** |
+| detector | **precision** | **recall** | PR-AUC | detect | false positives | FP cost | ₹ prevented | **net ₹** | ECE |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| `velocity_tuned` | 0.000 | 0.000 | 0.063 | **never** | 7 | ₹280 | ₹0 | **−₹280** | 0.068 |
+| `gbdt_per_txn` | 0.919 | 0.913 | 0.920 | 0.0 s | 32 | ₹1,280 | ₹29,127 | **₹27,847** | 0.017 |
+| **`koronis_graph`** | **0.980** | **0.975** | **0.997** | 16.3 s | **8** | **₹320** | ₹28,762 | **₹28,442** | **0.0013** |
 
-Campaign exposure if never stopped: ₹29,200.
+Precision and recall are at the cost-optimal operating point; PR-AUC is the threshold-free
+summary. Campaign exposure if never stopped: ₹29,200.
 
 **Read this carefully, because the honest claim is narrower than the obvious one.** The
-per-transaction model is *not* blind — it scores 0.920. What it does is fire **four times
-the false positives** (32 vs 8) to reach a worse result. Velocity rules are the ones that
-fail outright, exactly where Claim 1 says they must.
+per-transaction model is *not* blind — it reaches 0.919 precision and 0.913 recall. What it
+does is fire **four times the false positives** (32 vs 8) to get there, and still lands
+below Koronis on both. Velocity rules are the ones that fail outright, exactly where
+Claim 1 says they must.
 
 Calibration matters here too. An ECE of 0.0013 means Koronis's scores behave like
 probabilities, so a threshold means what its number implies; at 0.017 the GBDT's does not,
@@ -185,13 +187,24 @@ Stated plainly, because a result is only as good as its caveats.
 
 ## Defense-only
 
-Koronis is a detector. The campaign injector exists solely to produce labelled test data,
-as it does in every fraud-ML paper, and is constrained accordingly:
+Koronis is a detector. It identifies coordinated activity; it does not generate it against
+any live system. The campaign injector exists solely to produce labelled test data, as it
+does in every fraud-ML paper, and is constrained accordingly:
 
 - operates on in-memory dataframes; **no network capability anywhere in the codebase**
 - no real BIN ranges, no real card numbers, no live endpoints
 - reproduces only attack characteristics already documented publicly in Visa's own
   anti-enumeration guidance
+
+Verifiable in one command — the package imports nothing that can reach a network or spawn
+a process:
+
+```bash
+grep -rnE "^(import|from) (requests|urllib|socket|http|aiohttp|subprocess)" koronis/
+# no matches
+```
+
+The complete third-party surface is `numpy`, `pandas`, `scikit-learn`, `lightgbm`, `torch`.
 
 ## Run it
 
