@@ -9,6 +9,7 @@
     python -m koronis.cli mechanism   # which mechanism actually carries the signal
     python -m koronis.cli incidents   # consolidate alerts -> incidents -> actions
     python -m koronis.cli drift       # traffic-profile transfer stress test
+    python -m koronis.cli relations   # which entity type carries the signal
 """
 import json
 import sys
@@ -477,6 +478,67 @@ def _profile_stream(seed: int, profile, k: int, camo: float,
     return inject(bg, [spec], seed=seed)
 
 
+def relations(n_seeds: int = 5) -> pd.DataFrame:
+    """Drop each relation in turn and measure what it was worth.
+
+    The model reports a learned attention weight per relation, which is
+    suggestive but is not evidence: attention says where the model looked, not
+    what it gained. Removing a relation and re-fitting says what it gained.
+
+    Each variant is trained and evaluated under the same three-split protocol.
+    """
+    from .data import schema
+
+    original = list(schema.RELATIONS)
+    variants = {"all": original}
+    for rel in original:
+        variants[f"no_{rel}"] = [r for r in original if r != rel]
+
+    rows = []
+    for seed in range(n_seeds):
+        train = _train_set(seed * 10)
+        calib = _calibration_set(seed * 10 + 2)
+        test = _dataset(seed * 10 + 1, TEST_K, TEST_CAMO)
+        y, y_cal = test["label"].to_numpy(), calib["label"].to_numpy()
+
+        for name, rels in variants.items():
+            # RELATIONS is read at call time by build_edges and the model, so
+            # patching it here changes which entity types exist for this fit.
+            schema.RELATIONS[:] = rels
+            try:
+                m = KoronisDetector(seed=seed, window_s=WINDOW_S)
+                m.fit(train, epochs=60)
+                thr, _ = cost_optimal_threshold(_raw(m.score_events(calib)), y_cal,
+                                                COST_PER_ATTEMPT_INR,
+                                                COST_PER_FALSE_BLOCK_INR)
+                sc = _raw(m.score_events(test))
+                fired = sc >= thr
+                rows.append({
+                    "seed": seed, "variant": name, "n_relations": len(rels),
+                    "pr_auc": round(float(average_precision_score(y, sc)), 4),
+                    "precision": round(float(precision_score(y, fired, zero_division=0)), 4),
+                    "recall": round(float(recall_score(y, fired, zero_division=0)), 4),
+                    "false_positives": int((fired & (y == 0)).sum()),
+                })
+            finally:
+                schema.RELATIONS[:] = original
+
+    allr = pd.DataFrame(rows)
+    RESULTS.mkdir(exist_ok=True)
+    allr.to_csv(RESULTS / "relations_raw.csv", index=False)
+
+    med = (allr.groupby("variant", sort=False)
+           [["pr_auc", "precision", "recall", "false_positives"]]
+           .median().round(4).reset_index())
+    base = med.loc[med["variant"] == "all", "pr_auc"].iloc[0]
+    med["pr_auc_drop"] = (base - med["pr_auc"]).round(4)
+    med.to_csv(RESULTS / "relations.csv", index=False)
+
+    print(f"\nper-relation ablation, {n_seeds} trials, medians\n")
+    print(med.to_string(index=False))
+    return med
+
+
 def drift() -> pd.DataFrame:
     """Traffic-profile transfer stress test with an automation guardrail.
 
@@ -858,4 +920,5 @@ if __name__ == "__main__":
     cmd = sys.argv[1] if len(sys.argv) > 1 else "ablation"
     {"ablation": ablation, "frontier": frontier, "latency": latency,
      "seeds": seeds, "replay": replay, "benchmark": benchmark,
-     "mechanism": mechanism, "incidents": incidents, "drift": drift}[cmd]()
+     "mechanism": mechanism, "incidents": incidents, "drift": drift,
+     "relations": relations}[cmd]()

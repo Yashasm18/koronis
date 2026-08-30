@@ -458,6 +458,37 @@ cannot support. Where a reuse ratio is quoted it is the **observed** mean events
 divided by the base mean, recorded in `results/drift.json` — a PSI value says how much a
 distribution moved, not by what factor.
 
+## Which entity type carries the signal
+
+Dropping each relation in turn and re-fitting, under the same three-split protocol
+(5 trials, medians). `python -m koronis.cli relations`.
+
+| variant | PR-AUC | precision | recall | false positives | PR-AUC change |
+|---|---:|---:|---:|---:|---:|
+| all relations | 0.989 | 0.942 | 0.968 | 24 | — |
+| **no `bin_id`** | 0.942 | 0.951 | **0.813** | 17 | **−0.047** |
+| no `ip_id` | 0.983 | 0.928 | 0.960 | 29 | −0.006 |
+| no `device_id` | **0.994** | 0.963 | 0.978 | **15** | **+0.005** |
+| no `email_domain` | **0.993** | 0.956 | 0.983 | 18 | **+0.004** |
+
+**Shared BIN ranges carry almost all of it.** Remove that relation and recall collapses from
+0.968 to 0.813 — the model loses a fifth of the campaign. Nothing else comes close.
+
+**Two relations are net-negative.** Dropping `device_id` or `email_domain` *improves* PR-AUC
+and cuts false positives. They are contributing noise, not evidence.
+
+**This retires a claim made earlier in this project.** The model learns an attention weight
+per relation, and those weights are roughly uniform with `email_domain` highest — which was
+quoted as an indication of which entity type mattered. The ablation says the opposite.
+Attention says where a model looked, not what it gained, and only removing something
+measures what it was worth.
+
+**What is deliberately not done here:** the model is not re-fitted without those two
+relations. Selecting an architecture on test results is the same leakage discipline this
+project enforces everywhere else; doing it properly means selecting on the calibration
+split and re-running the full protocol, which is recorded as the correct next step rather
+than quietly performed to improve a headline number.
+
 ## Which mechanism carries the signal
 
 The full model alerting on the opening attempt demanded an explanation rather than a
@@ -611,6 +642,7 @@ python -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/python -m koronis.cli mechanism     # which mechanism carries the signal
 .venv/bin/python -m koronis.cli incidents     # alerts -> incidents -> forecast -> action
 .venv/bin/python -m koronis.cli drift         # traffic-profile transfer stress test
+.venv/bin/python -m koronis.cli relations     # which entity type carries the signal
 ```
 
 Results are written to `results/*.csv` and `results/*.json`. **Every number in this README
@@ -636,7 +668,7 @@ kaggle competitions download -c ieee-fraud-detection -p data/raw
 | [`koronis/data/`](koronis/data/) | Event schema, background loader, campaign injector with `(n, k, camouflage)` control |
 | [`koronis/graph/build.py`](koronis/graph/build.py) | Windowed entity-sharing graph, backwards-in-time edges, degree cap |
 | [`koronis/models/layers.py`](koronis/models/layers.py) | **From-scratch relational message passing** |
-| [`koronis/models/koronis.py`](koronis/models/koronis.py) | Inductive detector, relation attention |
+| [`koronis/models/koronis.py`](koronis/models/koronis.py) | Inductive detector |
 | [`koronis/models/loss.py`](koronis/models/loss.py) | Expected-rupee-cost objective |
 | [`koronis/models/velocity.py`](koronis/models/velocity.py) | FP-budget-tuned multi-entity baseline |
 | [`koronis/eval/`](koronis/eval/) | Cost model, latency harness, calibration, frontier sweep |

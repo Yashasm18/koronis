@@ -1,0 +1,6 @@
+variant,pr_auc,precision,recall,false_positives,pr_auc_drop
+all,0.9892,0.9417,0.9675,24.0,0.0
+no_device_id,0.9941,0.9632,0.9775,15.0,-0.0049
+no_ip_id,0.9833,0.9275,0.96,29.0,0.0059
+no_bin_id,0.9424,0.9509,0.8125,17.0,0.0468
+no_email_domain,0.9934,0.9558,0.9825,18.0,-0.0042

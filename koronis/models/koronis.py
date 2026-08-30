@@ -103,10 +103,14 @@ class KoronisDetector:
             return torch.sigmoid(self.net(x, edges)).numpy()
 
     def relation_attention(self) -> dict[str, float]:
-        """Which entity type gave the campaign away, averaged over layers.
+        """Learned attention per relation, averaged over layers.
 
-        A cheap stand-in for full subgraph explainability: it answers the first
-        question an analyst asks, which is *what linked these attempts*.
+        Read this as *where the model looked*, not as what each relation was
+        worth. A per-relation ablation (`python -m koronis.cli relations`)
+        disagrees with these weights: they are near-uniform with email_domain
+        highest, while removing email_domain slightly IMPROVES the model and
+        removing bin_id costs a fifth of recall. Attention is not attribution,
+        and only deletion measures contribution.
         """
         if self.net is None:
             raise RuntimeError("fit() must be called before relation_attention()")
