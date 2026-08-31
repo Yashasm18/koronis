@@ -3,7 +3,7 @@
 > Detection of distributed card-testing campaigns that per-entity velocity rules cannot see at any threshold.
 
 [![CI](https://github.com/Yashasm18/koronis/actions/workflows/ci.yml/badge.svg)](https://github.com/Yashasm18/koronis/actions/workflows/ci.yml)
-[![tests](https://img.shields.io/badge/tests-105%20passing-2ea44f)](tests/)
+[![tests](https://img.shields.io/badge/tests-109%20passing-2ea44f)](tests/)
 [![python](https://img.shields.io/badge/python-3.14-3776ab)](https://www.python.org/)
 [![license: MIT](https://img.shields.io/badge/license-MIT-yellow)](LICENSE)
 [![graph libs](https://img.shields.io/badge/graph%20libraries-none-8a3ffc)](koronis/models/layers.py)
@@ -17,35 +17,32 @@ campaign. [Full screen recording (MP4)](docs/assets/koronis-demo.mp4) · run it 
 
 ## What it solves
 
-**Card testing.** A fraudster buys stolen card numbers, most of them dead, and pushes
-thousands of ₹1–₹20 charges through a merchant's checkout to learn which are live. The
-checkout becomes a free card-validation service, and the merchant pays for it: an
-authorisation fee on every attempt including declines, card-network penalties when the
-decline rate spikes, and chargebacks weeks later on the very cards their own site
-validated.
+**Card testing.** A fraudster pushes thousands of ₹1–₹20 charges through a merchant's
+checkout to find which stolen cards are still live. The checkout becomes a free
+card-validation service, and the merchant pays: an authorisation fee on every attempt
+including declines, network penalties when the decline rate spikes, and chargebacks weeks
+later on the cards their own site validated.
 
 **Velocity rules cannot catch it — not because they are tuned badly, but by arithmetic.**
 An attacker spreading `n` attempts across `k ≥ n/τ` entities keeps every counter under
 threshold at *any* threshold. Koronis is a **defence-only detector and decision-support
-prototype** that works in exactly that region, and it reports precision, recall,
-false-positive cost in rupees, and detection latency on a held-out test set.
+prototype** built for exactly that region.
 
-The detector is a **temporal heterogeneous graph network written from scratch** — 6,225
-parameters, inductive, trained on expected rupee cost rather than cross-entropy. Its
-central contribution, though, is not that it beats its baselines: it is a
-**characterisation of when detection is possible at all**, stated as arithmetic and then
-tested.
+Its contribution is not that it beats its baselines. It is a **characterisation of when
+detection is possible at all** — stated as arithmetic, then tested.
+
+```bash
+python -m venv .venv && .venv/bin/pip install -r requirements.txt
+.venv/bin/python -m pytest tests/ -q          # 109 tests, ~1-2 min
+.venv/bin/python -m koronis.cli ablation      # reproduces the headline table below
+```
 
 ## Key results
 
-Let an attacker make `n` attempts spread across `k` entities against a counter firing at
-threshold `τ`. Attempts per entity are `n/k`, so firing requires `n/k > τ` and an
-attacker with `k ≥ n/τ` escapes for any `n`. With counters on several entity types the
-engine fires if any trips, so blindness needs `k ≥ n / min(τ)`. Meanwhile the number of
-attempt-pairs sharing an entity is `≈ n²/2k`: co-occurrence signal grows as `n²/k` where
-per-entity signal is only `n/k`, so the graph's advantage increases with attack size.
-The attacker's only escape from the graph is `k → n` — one fresh device, IP and BIN per
-attempt — which is bounded by infrastructure cost.
+**Why the graph wins, in one line.** Per-entity signal dilutes as `n/k`, but the number of
+attempt-pairs sharing an entity grows as `n²/k` — so the graph's advantage *increases* with
+attack size, and the attacker's only escape is `k → n`: one fresh device, IP and BIN per
+attempt, bounded by infrastructure cost.
 
 **Predicted vs. measured detectability boundary**, `predicted_boundary_k(n, τ) = n/τ`, on
 a 4×4 grid (`python -m koronis.cli frontier`):
@@ -62,11 +59,9 @@ cell agrees with `k ≥ n/τ` (**16 / 16**). Koronis detects in all sixteen.
 
 ![Detectability frontier: 16 measured cells against the boundary k = n/τ](docs/assets/frontier.svg)
 
-The dashed line is computed from arithmetic before any run. Every measured cell lands on
-the side it predicts, and Koronis detects across the whole grid — including the entire
-region above the line, where no per-entity counter can trip at any threshold. The chart is
-[interactive on the demo site](https://yashasm18.github.io/koronis/); both are generated
-from `results/frontier.csv`.
+The dashed line is arithmetic, drawn before any run. Every measured cell falls on the side
+it predicts, and Koronis detects across the whole grid — including the entire region above
+the line, where no per-entity counter can trip at any threshold.
 
 **Held-out detection**, median with the 2.5th / 97.5th percentiles observed across 10
 independent trials (`python -m koronis.cli seeds`):
@@ -80,37 +75,25 @@ independent trials (`python -m koronis.cli seeds`):
 | **`koronis_graph`** | **0.990** `[0.987, 0.995]` | **0.951** | **0.964** | **20** | **10 / 10** |
 
 Threshold rules do not degrade here — they stop working: at `k = 60` against a binding
-`τ = 8`, no counter can trip (Claim 1). The per-transaction model detects every time but
-at 476 false positives against Koronis's 20, a 24× difference; recall was never the hard
-part of this problem, precision at a usable alert volume is. Campaign exposure if never
-stopped is ₹29,200; per-trial values are in `results/seeds_raw.csv`.
+`τ = 8`, no counter can trip. The per-transaction model detects every time but at **476
+false positives against Koronis's 20**. Recall was never the hard part; precision at a
+usable alert volume is.
 
-**Detection latency** — precision / recall using only the stream up to `t` seconds after
-onset, each detector held at one calibration-derived threshold at every checkpoint:
-
-| detector | t=60s | t=300s | t=600s |
-|---|---|---|---|
-| `velocity_tuned` | not detected | not detected | not detected |
-| `decline_burst` | not detected | not detected | not detected |
-| `shared_entity` | not detected | not detected | not detected |
-| `gbdt_per_txn` | P 0.09 / R 0.67 | P 0.35 / R 0.69 | P 0.47 / R 0.75 |
-| **`koronis_graph`** | **P 0.43 / R 1.00** | **P 0.82 / R 1.00** | **P 0.88 / R 1.00** |
-
-At one minute Koronis has recalled every campaign attempt so far, at 0.43 precision
-against the per-transaction model's 0.09; by ten minutes it is at 0.88 precision with
-recall still at 1.00. None of the three learning-free detectors ever crosses its frozen
-threshold on this campaign.
+**Detection latency.** At one minute Koronis has already recalled every campaign attempt
+so far, at 0.43 precision against the per-transaction model's 0.09; by ten minutes it is at
+0.88 precision with recall still at 1.00. None of the three learning-free detectors ever
+crosses its frozen threshold on this campaign.
+→ [full latency curves](docs/evaluation.md#streaming-and-inference-latency)
 
 **An alert is not a task.** Four hundred event alerts are one campaign, so Koronis
-consolidates them and picks the intervention with the lowest expected rupee cost — not the
-one matching the highest risk score:
+consolidates them and picks the intervention with the lowest expected rupee cost:
 
 ```
 414 event alerts  ->  17 incidents  ->  1 action recommended
 ```
 
-Median across 8 independent test streams, with the policy seeing only the first 12 events
-of an incident plus a forecast — never the true remaining count:
+Median across 8 test streams. The policy sees only an incident's first 12 events plus a
+forecast — never the true remaining count:
 
 | policy | analyst minutes | merchant cost |
 |---|---:|---:|
@@ -145,24 +128,24 @@ flowchart TB
     DRIFT -->|"yes"| REV --> OUT
 ```
 
-A campaign that is individually unremarkable becomes measurable as a **group**. Attempts
-are nodes; two are linked when they share a device, IP, BIN range or email domain inside a
-window, with edges pointing **backwards in time** so a streaming evaluation cannot read the
-future. Aggregation is `torch.index_add_` — **no DGL, no PyTorch Geometric**. The business
-objective is the training objective.
+Attempts are nodes; two are linked when they share a device, IP, BIN range or email domain
+inside a window. Edges point **backwards in time**, so a streaming evaluation cannot read
+the future — which is also what lets the replay reproduce batch scores exactly. Aggregation
+is `torch.index_add_`: **no DGL, no PyTorch Geometric**.
+
+The detector is a **temporal heterogeneous graph network**, 6,225 parameters, inductive, and
+trained on expected rupee cost rather than cross-entropy — the business objective *is* the
+training objective.
 
 → **[Full architecture, and which parts are learned](docs/architecture.md)**
 
-## Quickstart
-
-```bash
-python -m venv .venv && .venv/bin/pip install -r requirements.txt
-.venv/bin/python -m pytest tests/ -q            # 105 tests, ~1–2 min
-.venv/bin/python -m koronis.cli ablation        # the headline comparison
-```
+## Reproducing everything
 
 Every experiment writes to `results/`, and **every number in this repo and on the demo site
 is read from there** — nothing is transcribed by hand.
+
+<details>
+<summary><b>All experiments</b></summary>
 
 ```bash
 .venv/bin/python -m koronis.cli seeds           # 10 trials, median + across-run range
@@ -178,6 +161,8 @@ is read from there** — nothing is transcribed by hand.
 .venv/bin/python -m koronis.cli benchmark       # p50 / p95 per-event inference latency
 python site/build.py                            # results/ -> docs/index.html
 ```
+
+</details>
 
 ## What is measured, and where
 
@@ -228,11 +213,10 @@ This is a **semi-synthetic proof of concept**, not production fraud detection.
 
 ## Acknowledgements
 
-The Koronis family is a group of asteroids that share orbital elements because they are
-fragments of a single shattered parent body. Hirayama found them in 1918 not by looking at
-the sky, where they are scattered and unremarkable, but by plotting them in
-orbital-element space, where they clump unmistakably. Individually ordinary events,
-scattered in the obvious view; plotted in shared-entity space, a common origin becomes
-undeniable.
+The Koronis asteroids share orbital elements because they are fragments of one shattered
+parent body. Hirayama found them in 1918 not by looking at the sky, where they are
+scattered and unremarkable, but by plotting them in *orbital-element space*, where they
+clump unmistakably. Individually ordinary events, scattered in the obvious view; plotted in
+shared-entity space, a common origin becomes undeniable.
 
 Built for the Razorpay AI Buildathon 2026 · Track 02, AI Risk Manager.
