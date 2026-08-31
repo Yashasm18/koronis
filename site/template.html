@@ -358,6 +358,20 @@ td.rng{color:var(--ink-3);font-size:10.5px}
       </div>
     </div>
     <div class="panel">
+      <div class="ph"><h2>Vantage point: merchant or gateway</h2>
+        <span class="hint" id="ap-hint"></span></div>
+      <div class="tbl"><table id="t-ap"></table></div>
+      <div class="prose" style="padding-top:0">
+        <p>The same campaign, the same frozen model and threshold — the only variable is how
+        much of the stream the detector may see at once. A ring split across <b>M</b> merchants
+        leaves each one <b>n/M</b> attempts, and co-occurrence goes as attempts squared, so a
+        merchant's view should carry about M times less signal. <b>At M = 1 the two views are
+        the same stream and score identically</b>, which is the control. The gap then opens
+        monotonically, as predicted. Even at M = 16 the merchant view still detects this
+        campaign: this measures a widening gap, not a blindness boundary.</p>
+      </div>
+    </div>
+    <div class="panel">
       <div class="ph"><h2>Detectability frontier</h2><span class="hint" id="front-hint"></span></div>
       <canvas id="front"></canvas>
       <p class="assum" id="front-cap" style="padding:0 14px 10px"></p>
@@ -735,6 +749,27 @@ fc.addEventListener("mousemove", function(e){
     : FRONT_CAP;
 });
 fc.addEventListener("mouseleave", function(){ el("front-cap").textContent = FRONT_CAP; });
+
+var AP = D.aperture.map(function(r){
+  return {m:+r.n_merchants, view:r.view, pr:+r.pr_auc, rec:+r.recall,
+          fp:+r.false_positives, share:+r.campaign_share_largest_merchant};
+});
+var APM = AP.map(function(r){return r.m;}).filter(function(v,i,a){return a.indexOf(v)===i;});
+var APROWS = APM.map(function(m){
+  var g = AP.filter(function(r){return r.m===m && r.view==="gateway";})[0];
+  var s = AP.filter(function(r){return r.m===m && r.view==="merchant";})[0];
+  return {m:m, g:g, s:s, gap:g.pr - s.pr};
+});
+table(el("t-ap"), [
+  {h:"merchants", f:function(r){return r.m;}},
+  {h:"gateway PR-AUC", f:function(r){return r.g.pr.toFixed(3);}},
+  {h:"merchant PR-AUC", f:function(r){return r.s.pr.toFixed(3);}},
+  {h:"gap", f:function(r){return r.gap.toFixed(3);}},
+  {h:"gateway recall", f:function(r){return r.g.rec.toFixed(3);}},
+  {h:"merchant recall", f:function(r){return r.s.rec.toFixed(3);}},
+  {h:"largest merchant's share", f:function(r){return (r.share===undefined?r.g.share:r.share*1).toFixed(3);}}
+], APROWS.map(function(r){return {m:r.m,g:r.g,s:r.s,gap:r.gap,share:r.g.share};}));
+el("ap-hint").textContent = "one campaign split across M merchants \u00b7 frozen model and threshold";
 
 var agree = D.frontier.filter(function(r){
   return (r.velocity_blind_predicted==="True") === (r.velocity_detected==="False");}).length;

@@ -3,7 +3,7 @@
 > Detection of distributed card-testing campaigns that per-entity velocity rules cannot see at any threshold.
 
 [![CI](https://github.com/Yashasm18/koronis/actions/workflows/ci.yml/badge.svg)](https://github.com/Yashasm18/koronis/actions/workflows/ci.yml)
-[![tests](https://img.shields.io/badge/tests-95%20passing-2ea44f)](tests/)
+[![tests](https://img.shields.io/badge/tests-99%20passing-2ea44f)](tests/)
 [![python](https://img.shields.io/badge/python-3.14-3776ab)](https://www.python.org/)
 [![license: MIT](https://img.shields.io/badge/license-MIT-yellow)](LICENSE)
 [![graph libs](https://img.shields.io/badge/graph%20libraries-none-8a3ffc)](koronis/models/layers.py)
@@ -223,6 +223,7 @@ python -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/python -m koronis.cli mechanism     # which mechanism carries the signal
 .venv/bin/python -m koronis.cli relations     # which entity type carries the signal
 .venv/bin/python -m koronis.cli incidents     # alerts -> incidents -> forecast -> action
+.venv/bin/python -m koronis.cli aperture      # merchant view vs gateway view
 .venv/bin/python -m koronis.cli drift         # traffic-profile transfer stress test
 .venv/bin/python -m koronis.cli replay        # causal event-by-event replay -> JSON
 .venv/bin/python -m koronis.cli benchmark     # p50 / p95 per-event inference latency
@@ -443,6 +444,46 @@ On the held-out stream Koronis alerts on the campaign's opening attempt — but 
 is a declined authorisation with no campaign neighbours yet, weak on its own; the graph is
 what makes the following attempts actionable.
 
+### Vantage point: one merchant or the whole gateway
+
+A merchant sees its own checkout. A gateway sees thousands at once, and a
+card-testing ring does not confine itself to one of them — spreading across
+merchants is simply another axis on which per-merchant counters stay quiet.
+
+The prediction was stated in [`eval/aperture.py`](koronis/eval/aperture.py) before the
+run. A campaign of `n` attempts split evenly over `M` merchants leaves `n/M` attempts in
+any one merchant's view. Co-occurrence goes as attempts squared over spread, so a single
+merchant sees `(n/M)²/k` pairs where the pooled stream sees `n²/k` — about **M times less
+signal**. The merchant-scoped view should therefore decay as `M` grows, while the pooled
+view sees the stream it would have seen anyway.
+
+Same campaign, same frozen model, same frozen threshold; the only variable is how much of
+the stream the detector may see at once (`python -m koronis.cli aperture`):
+
+| merchants | gateway PR-AUC | merchant PR-AUC | gap | largest merchant's share of the campaign |
+|---:|---:|---:|---:|---:|
+| 1 | 0.999 | 0.999 | **0.000** | 100% |
+| 2 | 0.997 | 0.991 | 0.006 | 50% |
+| 4 | 0.994 | 0.980 | 0.014 | 27% |
+| 8 | 0.988 | 0.947 | 0.041 | 14% |
+| 16 | 0.975 | 0.902 | **0.073** | 8% |
+
+**At `M = 1` the two views are the same stream by construction, and they score
+identically** — that is the experiment's control, and a test asserts it. From there the
+gap opens monotonically and roughly in proportion to `M`, as predicted. Recall tells the
+same story: the gateway view holds 0.99 throughout while the merchant view falls to 0.95.
+
+Both views degrade somewhat as `M` grows, because more merchants means more legitimate
+traffic and more chances to false-positive; the merchant view degrades about three times
+faster. **Honest limit: even at `M = 16` the merchant-scoped view still detects this
+campaign.** This measures a widening gap, not a blindness boundary — it says the wider
+aperture is worth something and quantifies how much, not that a merchant alone is
+helpless.
+
+Entity ids are namespaced per merchant. Without that, two merchants would reuse the same
+`d17` and the pooled graph would link strangers — the gateway view would then win on an
+artefact. A test asserts no background entity is shared across merchants.
+
 ### Traffic-profile transfer stress test
 
 These are synthetic merchant shapes, not real merchants. Surviving this is evidence the
@@ -527,6 +568,31 @@ This is a **semi-synthetic proof of concept**, not production fraud detection.
   legitimate volume, so `τ_bin` would sit far above the 9 measured here, which makes the
   baseline stronger than reality.
 - **The drift guardrail is experimental**, as measured above — not a safety control.
+
+### What a production deployment would still need
+
+Stated because the gap between this and a deployed system is itself a design question,
+and a reviewer should not have to guess where the seams are.
+
+- **Where it sits.** Koronis is **post-authorisation by construction**: the authorisation
+  outcome is one of its two mechanisms, and an outcome exists only after an attempt is
+  submitted. It cannot prevent the attempt it learns from — the value is in the attempts
+  that follow. A deployment would score inline after auth, where ~1 ms is affordable, and
+  feed the decision layer asynchronously.
+- **The scorer is causal; the consolidator is not yet.** `StreamingKoronis.push` is
+  strictly online and reproduces batch scores exactly. `build_incidents` is not: it
+  computes the 2%-link-share cap with `value_counts()` over the whole frame, which is a
+  batch quantity. Live, that would need a rolling or decayed frequency estimate. Nothing
+  in the reported detection numbers depends on it — it affects consolidation only — but
+  it is a real seam between the two halves.
+- **No adaptation loop.** The model is fitted once and frozen, which is what makes the
+  hold-out meaningful here and is *not* what a deployment wants. Attacks move. A
+  production version needs a retraining cadence, analyst dispositions fed back as labels,
+  and drift monitored on a far slower timescale than detection — the last of which is
+  exactly the confound measured above.
+- **Single-merchant scope by default.** The aperture experiment above quantifies what a
+  gateway-wide view is worth; running it that way raises data-governance questions this
+  prototype does not address.
 
 ### Defence-only
 

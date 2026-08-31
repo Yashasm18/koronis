@@ -30,6 +30,7 @@ def _bundle() -> dict:
         "seeds": list(csv.DictReader((RESULTS / "seeds_summary.csv").open())),
         "mech": list(csv.DictReader((RESULTS / "mechanism.csv").open())),
         "frontier": list(csv.DictReader((RESULTS / "frontier.csv").open())),
+        "aperture": list(csv.DictReader((RESULTS / "aperture.csv").open())),
         "latency": list(csv.DictReader((RESULTS / "latency.csv").open())),
     }
 

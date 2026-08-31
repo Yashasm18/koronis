@@ -10,6 +10,7 @@
     python -m koronis.cli incidents   # consolidate alerts -> incidents -> actions
     python -m koronis.cli drift       # traffic-profile transfer stress test
     python -m koronis.cli relations   # which entity type carries the signal
+    python -m koronis.cli aperture    # merchant view vs gateway view
 """
 import json
 import sys
@@ -23,6 +24,7 @@ from sklearn.metrics import average_precision_score, precision_score, recall_sco
 from .data.background import load_background
 from .data.campaigns import inject
 from .data.schema import CampaignSpec
+from .eval.aperture import compare_apertures
 from .eval.calibration import cost_optimal_threshold, expected_calibration_error
 from .eval.cost import COST_PER_ATTEMPT_INR, COST_PER_FALSE_BLOCK_INR
 from .eval.latency import detection_times, exposure, latency_curve, money_prevented
@@ -349,6 +351,45 @@ def mechanism(n_seeds: int = 5) -> pd.DataFrame:
     print(f"\nmechanism ablation, {n_seeds} trials, medians\n")
     print(summary.to_string(index=False))
     return summary
+
+
+APERTURE_MERCHANTS = (1, 2, 4, 8, 16)
+
+
+def aperture() -> pd.DataFrame:
+    """Does seeing more merchants at once make the same attack more visible?
+
+    A gateway observes many merchants; a merchant observes one. The same ring
+    hits several, so the two vantage points see different fractions of it.
+    The prediction is stated in eval/aperture.py before any of this runs: the
+    pooled view should carry about M times the co-occurrence signal, so the
+    per-merchant view should degrade as M grows while the pooled view does not.
+
+    Model and threshold are fitted once on the ordinary training and
+    calibration splits and frozen - the aperture streams are held out from
+    both, and the two views differ only in what the detector may see at once.
+    """
+    train = _train_set(0)
+    _, _, kor = _fit_all(train)
+    calib = _calibration_set(2)
+    thr, _ = cost_optimal_threshold(_raw(kor.score_events(calib)),
+                                    calib["label"].to_numpy(),
+                                    COST_PER_ATTEMPT_INR, COST_PER_FALSE_BLOCK_INR)
+
+    df = compare_apertures(kor, thr, list(APERTURE_MERCHANTS),
+                           n_attempts=N_ATTEMPTS, k=TEST_K, camouflage=TEST_CAMO,
+                           seed=11, window_s=WINDOW_S,
+                           n_background=N_BACKGROUND // 2)
+    RESULTS.mkdir(exist_ok=True)
+    df.to_csv(RESULTS / "aperture.csv", index=False)
+
+    wide = df.pivot(index="n_merchants", columns="view", values="pr_auc")
+    print("\nthe same campaign, seen from two vantage points")
+    print(f"threshold {thr:.4f} frozen on calibration; model never refitted\n")
+    print(df.to_string(index=False))
+    print("\nPR-AUC by aperture:")
+    print(wide.to_string())
+    return df
 
 
 N_POLICY_STREAMS = 8
@@ -926,4 +967,4 @@ if __name__ == "__main__":
     {"ablation": ablation, "frontier": frontier, "latency": latency,
      "seeds": seeds, "replay": replay, "benchmark": benchmark,
      "mechanism": mechanism, "incidents": incidents, "drift": drift,
-     "relations": relations}[cmd]()
+     "relations": relations, "aperture": aperture}[cmd]()
