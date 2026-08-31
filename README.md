@@ -7,14 +7,11 @@
 [![graph libs](https://img.shields.io/badge/graph%20libraries-none-8a3ffc)](koronis/models/layers.py)
 [![track](https://img.shields.io/badge/Razorpay%20Buildathon-Track%2002%20·%20AI%20Risk%20Manager-0c2451)](https://razorpay.com/buildathon/)
 
-<video
-  src="https://github.com/Yashasm18/koronis/raw/main/docs/assets/koronis-demo.mp4"
-  poster="https://github.com/Yashasm18/koronis/raw/main/docs/assets/koronis-demo-poster.png"
-  controls muted width="880">
-  <a href="https://github.com/Yashasm18/koronis/raw/main/docs/assets/koronis-demo.mp4">Demo walkthrough (MP4)</a>
-</video>
+![Koronis demo — held-out campaign replayed event by event](docs/assets/koronis-demo.gif)
 
-*A held-out campaign replayed event by event: detection, incident consolidation, the action ladder, then the evaluation and limitations. Run it live at **[yashasm18.github.io/koronis](https://yashasm18.github.io/koronis/)**.*
+*Detection, incident consolidation and the cost-optimal action ladder on a held-out
+campaign. [Full screen recording (MP4)](docs/assets/koronis-demo.mp4) · run it live at
+**[yashasm18.github.io/koronis](https://yashasm18.github.io/koronis/)**.*
 
 ## Table of contents
 
