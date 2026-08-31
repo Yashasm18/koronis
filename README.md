@@ -2,8 +2,10 @@
 
 > Detection of distributed card-testing campaigns that per-entity velocity rules cannot see at any threshold.
 
+[![CI](https://github.com/Yashasm18/koronis/actions/workflows/ci.yml/badge.svg)](https://github.com/Yashasm18/koronis/actions/workflows/ci.yml)
 [![tests](https://img.shields.io/badge/tests-93%20passing-2ea44f)](tests/)
-[![python](https://img.shields.io/badge/python-3.11%2B-3776ab)](https://www.python.org/)
+[![python](https://img.shields.io/badge/python-3.14-3776ab)](https://www.python.org/)
+[![license: MIT](https://img.shields.io/badge/license-MIT-yellow)](LICENSE)
 [![graph libs](https://img.shields.io/badge/graph%20libraries-none-8a3ffc)](koronis/models/layers.py)
 [![track](https://img.shields.io/badge/Razorpay%20Buildathon-Track%2002%20·%20AI%20Risk%20Manager-0c2451)](https://razorpay.com/buildathon/)
 
@@ -23,6 +25,8 @@ campaign. [Full screen recording (MP4)](docs/assets/koronis-demo.mp4) · run it 
 - [Evaluation](#evaluation)
 - [Limitations](#limitations)
 - [Engineering notes](#engineering-notes)
+- [Contributing](#contributing)
+- [License](#license)
 - [Acknowledgements](#acknowledgements)
 
 ## Overview
@@ -70,14 +74,15 @@ attempt — which is bounded by infrastructure cost.
 **Predicted vs. measured detectability boundary**, `predicted_boundary_k(n, τ) = n/τ`, on
 a 4×4 grid (`python -m koronis.cli frontier`):
 
-| n | k=2 | k=10 | k=50 | k=200 | predicted boundary |
+| n | k=2 | k=10 | k=50 | k=200 | predicted boundary `n/τ` |
 |---:|:---:|:---:|:---:|:---:|---:|
-| 200 | fires | fires | **blind** | **blind** | 22.2 |
-| 400 | fires | fires | **blind** | **blind** | 44.4 |
-| 800 | fires | fires | fires | **blind** | 88.9 |
-| 1600 | fires | fires | fires | **blind** | 177.8 |
+| 200 | fires | fires | **blind** | **blind** | 25 |
+| 400 | fires | fires | **blind** | **blind** | 50 |
+| 800 | fires | fires | fires | **blind** | 100 |
+| 1600 | fires | fires | fires | **blind** | 200 |
 
-Every cell agrees with `k ≥ n/τ` (**16 / 16**). Koronis detects in all sixteen.
+The binding threshold is `τ = 8` (the device counter; `τ_ip = 61`, `τ_bin = 236`). Every
+cell agrees with `k ≥ n/τ` (**16 / 16**). Koronis detects in all sixteen.
 
 **Held-out detection**, median with the 2.5th / 97.5th percentiles observed across 10
 independent trials (`python -m koronis.cli seeds`):
@@ -93,7 +98,8 @@ independent trials (`python -m koronis.cli seeds`):
 Threshold rules do not degrade here — they stop working: at `k = 60` against a binding
 `τ = 8`, no counter can trip (Claim 1). The per-transaction model detects every time but
 at 476 false positives against Koronis's 20, a 24× difference; recall was never the hard
-part of this problem, precision at a usable alert volume is.
+part of this problem, precision at a usable alert volume is. Campaign exposure if never
+stopped is ₹29,200; per-trial values are in `results/seeds_raw.csv`.
 
 **Detection latency** — precision / recall using only the stream up to `t` seconds after
 onset, each detector held at one calibration-derived threshold at every checkpoint:
@@ -103,8 +109,13 @@ onset, each detector held at one calibration-derived threshold at every checkpoi
 | `velocity_tuned` | not detected | not detected | not detected |
 | `decline_burst` | not detected | not detected | not detected |
 | `shared_entity` | not detected | not detected | not detected |
-| `gbdt_per_txn` | P 0.19 / R 0.80 | P 0.39 / R 0.71 | P 0.48 / R 0.70 |
-| **`koronis_graph`** | **P 0.56 / R 1.00** | **P 0.82 / R 0.97** | **P 0.88 / R 0.97** |
+| `gbdt_per_txn` | P 0.09 / R 0.67 | P 0.35 / R 0.69 | P 0.47 / R 0.75 |
+| **`koronis_graph`** | **P 0.43 / R 1.00** | **P 0.82 / R 1.00** | **P 0.88 / R 1.00** |
+
+At one minute Koronis has recalled every campaign attempt so far, at 0.43 precision
+against the per-transaction model's 0.09; by ten minutes it is at 0.88 precision with
+recall still at 1.00. None of the three learning-free detectors ever crosses its frozen
+threshold on this campaign.
 
 ## How it works
 
@@ -190,7 +201,8 @@ Three splits, and the threshold never sees the test set:
 
 All three derive from one run seed, so repeating the run resamples every split together.
 Training contains only campaigns concentrated enough that a tuned velocity engine still
-catches them (`k ≤ 30`, below the boundary of ~44); the test campaign is spread past that
+catches them (`k ≤ 30`, below the `n/τ = 50` boundary at `n = 400`); the test campaign is
+spread past that
 boundary, fully camouflaged, with unseen entities, so the hold-out is **extrapolation**,
 not interpolation. Scores are used raw — rescaling each split by its own maximum would
 let every split redefine what a score means.
@@ -246,7 +258,8 @@ splitting by row inflates apparent coverage (91.8% by row vs. the figure below b
 | P90 interval coverage | 96.6% (target 90%) |
 | Median absolute error, P50 | 104.0 attempts |
 | Mean true remaining | 370.4 attempts |
-| Fit / conformal / evaluation | 4 streams / 4 streams / 97 held-out snapshots |
+| Fit / conformal streams | 4 (campaigns 2, 3, 4, 6) / 4 (campaigns 0, 1, 5, 7) |
+| Snapshots | 84 calibration / 88 held-out |
 
 The interval over-covers: conservative, which is the safe direction for a policy that
 escalates on uncertainty, but not well calibrated with only four conformal streams.
@@ -260,35 +273,37 @@ Median across 8 independent test streams:
 
 | policy | incidents actioned | false incidents | analyst minutes | merchant cost |
 |---|---:|---:|---:|---:|
-| always allow | 0 | 0 | 0.0 | ₹60,444 |
-| always hold | 20 | 16 | 234.0 | ₹121,644 |
-| event-by-event thresholding | 2 | 1 | 214.8 | ₹19,167 |
-| **causal policy** *(forecast only)* | 2 | 1 | 12.0 | ₹16,240 |
-| oracle policy *(upper bound)* | 2 | 0 | 12.0 | ₹8,691 |
+| always allow | 0.0 | 0.0 | 0.0 | ₹60,444 |
+| always hold | 19.5 | 15.5 | 234.0 | ₹121,644 |
+| event-by-event thresholding | 2.0 | 1.0 | 214.8 | ₹19,167 |
+| **causal policy** *(forecast only)* | 2.0 | 1.0 | 12.0 | ₹16,240 |
+| oracle policy *(upper bound)* | 1.5 | 0.0 | 12.0 | ₹8,691 |
 
-Not knowing the future is measured: on the demo stream the causal policy matches the
-oracle's action on 14 of 17 incidents, for a regret of ₹1,560; across the eight streams
-the median gap is ₹7,548. Event thresholding reaches the same decision but hands an
-analyst 205.8 minutes of triage instead of 12 — consolidation, not detection, is the
-difference. When the forecast interval is wide relative to its median, the policy
-escalates to analyst review rather than automating.
+Fractional counts are medians across an even number of streams. Not knowing the future is
+measured: on the demo stream the causal policy matches the oracle's action on 14 of 17
+incidents, for a regret of ₹1,560; across the eight streams the median cost gap is ₹7,548.
+Event thresholding reaches the same decision but hands an analyst 214.8 minutes of triage
+instead of 12 — consolidation, not detection, is the difference. When the forecast
+interval is wide relative to its median, the policy escalates to analyst review rather
+than automating.
 
 ### Incident-level calibration
 
 An event model with ECE 0.0025 does not give a calibrated incident probability for free —
 events inside an incident are strongly dependent, and that dependence is the signal.
-Incident risk is a separate model, fitted on 47 calibration incidents pooled across 8
-streams and measured on 47 held-out incidents:
+Incident risk is a separate model, fitted on 153 calibration incidents pooled across 8
+streams and measured on 161 held-out incidents:
 
 | predicted | observed | incidents |
 |---:|---:|---:|
-| 0.075 | 0.00 | 34 |
-| 0.213 | 0.00 | 3 |
-| 0.466 | 0.00 | 2 |
-| 1.000 | 1.00 | 8 |
+| 0.103 | 0.137 | 139 |
+| 0.313 | 0.364 | 11 |
+| 0.995 | 1.000 | 11 |
 
-Separation is clean at both ends; the middle is weakly determined (five incidents across
-two bins) and slightly over-confident. Reported rather than smoothed over.
+Predicted and observed track closely at the top (0.995 → 1.000) and reasonably at the
+bottom (0.103 → 0.137, slightly under-confident). The single middle bin (0.313 → 0.364,
+11 incidents) is thin; the 0.5–0.7 range holds no incidents at all. Reported rather than
+smoothed over.
 
 ### Which entity type carries the signal
 
@@ -319,17 +334,18 @@ Removing each mechanism in turn under the same protocol (5 trials, medians;
 
 | variant | PR-AUC | precision | recall | false positives | first alert |
 |---|---:|---:|---:|---:|---:|
-| **`koronis_full`** | **0.987** | **0.936** | 0.978 | **27** | 0.0 s |
-| `no_edges` — event features only | 0.334 | 0.454 | 0.968 | 464 | 0.0 s |
-| `no_approved` — graph only | 0.712 | 0.734 | 0.850 | 106 | 25.8 s |
-| `no_edges` + `no_approved` | 0.061 | 0.000 | 0.000 | 2 | never |
+| **`koronis_full`** | **0.989** | **0.942** | 0.968 | **24** | 0.0 s |
+| `no_edges` — event features only | 0.333 | 0.451 | 0.955 | 465 | 0.0 s |
+| `no_approved` — graph only | 0.726 | 0.746 | 0.648 | 91 | 67.1 s |
+| `no_edges` + `no_approved` | 0.061 | 0.000 | 0.000 | 0 | never |
 
-The authorisation outcome buys earliness (alert at t = 0, but 0.454 precision and 464
-false positives). The graph buys precision (first alert moves to 25.8 s, but false
-positives fall to 106). Together: 27 false positives at 0.936 precision, a 17× reduction
-over event-features-alone; with both removed the model never fires, so no third signal
-source is hiding in the features. `tests/test_first_event.py` pins the structural claim
-that the opening attempt has zero campaign-derived links and cannot acquire any.
+The authorisation outcome buys earliness (alert at t = 0, but 0.451 precision and 465
+false positives). The graph buys precision (first alert moves to 67.1 s and recall drops
+to 0.648, but false positives fall to 91 and precision rises to 0.746). Together: 24 false
+positives at 0.942 precision, a 19× reduction over event-features-alone; with both removed
+the model never fires, so no third signal source is hiding in the features.
+`tests/test_first_event.py` pins the structural claim that the opening attempt has zero
+campaign-derived links and cannot acquire any.
 
 ### Streaming and inference latency
 
@@ -340,7 +356,7 @@ event at a time and **reproduces batch scores exactly** (asserted to `1e-5` in
 
 | p50 | p95 | p99 | mean | throughput |
 |---:|---:|---:|---:|---:|
-| 0.99 ms | 1.22 ms | 1.40 ms | 1.00 ms | ~998 events/sec |
+| 0.99 ms | 1.19 ms | 1.26 ms | 0.98 ms | ~1,018 events/sec |
 
 Entity buckets expire on the window, so memory is bounded by window occupancy rather than
 stream length. On the held-out stream Koronis alerts on the campaign's opening attempt —
@@ -369,12 +385,19 @@ percentile of PSI between disjoint base samples:
 | base | 0.141 | 0 / 3 | reuse_bin | — |
 | `subscription` | 0.584 | 3 / 3 | reuse_device | ✓ device reuse |
 | `marketplace` | 0.924 | 3 / 3 | reuse_ip | ✓ entity diffusion |
-| `flash_sale` | 0.399 | 3 / 3 | log_interarrival | ✓ the burst |
+| `flash_sale` | 0.400 | 3 / 3 | log_interarrival | ✓ the burst |
 
 Cut-off 0.162. When PSI exceeds it, the policy stands down from automated intervention to
-analyst review — a trade, not a free win: across the shifted profiles the guardrail
-prevents 8 false automated interventions and downgrades 19 genuine responses, adding 120
-analyst minutes.
+analyst review. That is a trade, not a free win:
+
+| profile | false auto-actions avoided | true responses downgraded | analyst minutes added |
+|---|---:|---:|---:|
+| `subscription` | 28 | 9 | 312 |
+| `marketplace` | 2 | 11 | 60 |
+| `flash_sale` | 19 | 9 | 132 |
+
+Across the shifted profiles the guardrail prevents 49 false automated interventions and
+downgrades 29 genuine responses, adding 504 analyst minutes.
 
 **Status: experimental decision support, not a safety control.** The cut-off is fitted on
 16 base streams and the false-flag rate then measured on 12 disjoint base streams comes
@@ -512,6 +535,16 @@ test gets checked; a property you merely intend gets silently violated the momen
 unrelated helper changes. From (5): a preprocessing step that seems neutral can decide
 your conclusion, and the dangerous ones are those whose bias points your way. From (6):
 when a result looks too clean, suspect the simulation before congratulating the model.
+
+## Contributing
+
+[CONTRIBUTING.md](CONTRIBUTING.md) covers development setup and the conventions that keep
+the results reproducible — every claim backed by an assertion, every published number
+regenerated from `results/`. Security policy and scope: [SECURITY.md](SECURITY.md).
+
+## License
+
+[MIT](LICENSE) © 2026 Yashas.
 
 ## Acknowledgements
 
