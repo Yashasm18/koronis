@@ -3,7 +3,7 @@
 > Detection of distributed card-testing campaigns that per-entity velocity rules cannot see at any threshold.
 
 [![CI](https://github.com/Yashasm18/koronis/actions/workflows/ci.yml/badge.svg)](https://github.com/Yashasm18/koronis/actions/workflows/ci.yml)
-[![tests](https://img.shields.io/badge/tests-93%20passing-2ea44f)](tests/)
+[![tests](https://img.shields.io/badge/tests-95%20passing-2ea44f)](tests/)
 [![python](https://img.shields.io/badge/python-3.14-3776ab)](https://www.python.org/)
 [![license: MIT](https://img.shields.io/badge/license-MIT-yellow)](LICENSE)
 [![graph libs](https://img.shields.io/badge/graph%20libraries-none-8a3ffc)](koronis/models/layers.py)
@@ -232,6 +232,24 @@ figures are declared assumptions about a merchant workflow, in
 The chosen action minimises
 `friction + risk × forecast_exposure × (1 − stops) + (1 − risk) × false_harm`.
 
+Each consolidated incident carries a plain-text **audit dossier** —
+`koronis.incident.dossier()`, also printed by `koronis.cli incidents` and shown in the
+console — that reformats the fields already computed (spread and per-entity load,
+consolidation, recalibrated risk, the forecast, and the chosen action versus keeping
+`monitor`). For the held-out campaign incident:
+
+```
+Spread          395 alerted attempts · 60 devices · 60 IPs · 60 BINs
+                per-entity load 6.6/device, 6.6/IP, 6.6/BIN  (binding velocity τ = 8)
+Consolidation   395 event alerts → 1 incident · link window 900 s
+Incident risk   1.000  (recalibrated logistic on calibration incidents)
+Forecast        decided after 12 events · remaining P50 309 [P90 557]
+                exposure P50 ₹22,584 [P90 ₹40,658]
+Recommendation  Hold + analyst review — hold matching attempts, queue for review
+                expected ₹1,685  vs ₹22,557 to keep monitoring
+                oracle action: hold_review  (matches)
+```
+
 ### Exposure forecast
 
 Choosing an action needs an estimate of what inaction would cost. Offline that can be read
@@ -358,15 +376,17 @@ event at a time and **reproduces batch scores exactly** (asserted to `1e-5` in
 |---:|---:|---:|---:|---:|
 | 0.99 ms | 1.19 ms | 1.26 ms | 0.98 ms | ~1,018 events/sec |
 
-**Why the per-event cost is flat in stream length.** Each `push` bisects into per-entity
-buckets for the neighbours inside the `window_s = 3600 s` window, keeps at most
-`max_degree = 32` most-recent per relation (4 relations), and runs `layers = 2`
-message-passing steps — so the work is `O(relations · max_degree · layers)` regardless of
-how many events came before. Memory is `O(active entities in window × bucket size)`:
-`bucket.popleft()` expires events as the window advances, and
-`test_stream.py::test_window_bounds_memory` asserts the buffered total stays well below an
-unbounded stream's. The `max_degree` cap and the window bound are the two constants;
-neither is a function of total volume.
+**Per-event cost is flat in stream length**, by construction:
+
+- **Time** — `O(R · D_max · L · d)` per `push`: `R = 4` relations, `D_max = 32` (the
+  `max_degree` fan-in cap in [`graph/build.py`](koronis/graph/build.py), keeping the most
+  recent neighbours — not reservoir sampling), `L = 2` message-passing layers, `d = 32`
+  hidden units. None of these depends on the number of events already seen, so measured
+  latency holds at ~0.99 ms p50 regardless of stream length.
+- **Space** — `O(W · λ · d)`: the `window_s = 3600 s` span times the arrival rate `λ`.
+  `bucket.popleft()` evicts events once `t − t_event > W`, so memory tracks active window
+  occupancy, not cumulative volume. `test_stream.py::test_window_bounds_memory` asserts
+  the buffered total stays well below an unbounded stream's.
 
 On the held-out stream Koronis alerts on the campaign's opening attempt — but that alert
 is a declined authorisation with no campaign neighbours yet, weak on its own; the graph is

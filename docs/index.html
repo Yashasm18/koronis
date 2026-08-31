@@ -146,6 +146,11 @@ canvas{display:block;width:100%;background:var(--canvas-bg)}
 .incbar{display:flex;flex-wrap:wrap;gap:8px;align-items:baseline;
   font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--ink-3)}
 .incbar b{color:var(--accent);font-weight:600}
+.dossier-wrap{margin-top:10px;border-top:1px solid var(--line);padding-top:8px}
+.dossier-wrap summary{cursor:pointer;font-size:10.5px;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--ink-3)}
+.dossier{margin:8px 0 0;font-family:"IBM Plex Mono",monospace;font-size:10.5px;
+  line-height:1.6;color:var(--ink-2);white-space:pre-wrap;overflow-x:auto}
 
 /* tables */
 .tbl{overflow-x:auto}
@@ -240,6 +245,10 @@ td.rng{color:var(--ink-3);font-size:10.5px}
             <div id="ladder-rows"></div>
             <p class="assum" id="assum"></p>
           </div>
+          <details class="dossier-wrap" id="dossier-wrap" hidden>
+            <summary>Audit dossier</summary>
+            <pre class="dossier" id="dossier"></pre>
+          </details>
         </div>
       </div>
     </div>
@@ -472,6 +481,30 @@ var ACTION_NOTE = {monitor:"no action; keep scoring",
   step_up:"extra verification on matching attempts",
   hold_review:"hold matching attempts, queue for review"};
 
+/* Plain-text audit dossier for one incident. Composes fields already on the
+   record — no new computation — and mirrors koronis.incident.dossier(). */
+function dossierText(P){
+  var dev=Math.max(P.n_devices,1), ip=Math.max(P.n_ips,1), bn=Math.max(P.n_bins,1),
+      n=P.n_attempts, c=P.option_costs,
+      agree=(P.oracle_action===P.action)?"matches":("differs — oracle: "+P.oracle_action),
+      unc=P.forecast_uncertain?"  · wide interval → escalate to review":"";
+  return [
+    "Spread          "+n+" alerted attempts · "+dev+" devices · "+ip+" IPs · "+bn+" BINs",
+    "                per-entity load "+(n/dev).toFixed(1)+"/device, "+(n/ip).toFixed(1)+"/IP, "
+      +(n/bn).toFixed(1)+"/BIN  (binding velocity τ = 8)",
+    "Consolidation   "+n+" event alerts → 1 incident · link window 900 s",
+    "Incident risk   "+P.risk.toFixed(3)+"  (recalibrated logistic on calibration incidents)",
+    "Forecast        decided after "+P.observed_at_decision+" events · remaining P50 "
+      +Math.round(P.forecast_remaining_p50)+" [P90 "+Math.round(P.forecast_remaining_p90)+"]"+unc,
+    "                exposure P50 ₹"+num(Math.round(P.forecast_exposure_p50_inr))
+      +" [P90 ₹"+num(Math.round(P.forecast_exposure_p90_inr))+"]",
+    "Recommendation  "+ACTION_LABEL[P.action]+" — "+ACTION_NOTE[P.action],
+    "                expected ₹"+num(Math.round(c[P.action]))
+      +"  vs ₹"+num(Math.round(c.monitor))+" to keep monitoring",
+    "                oracle action: "+P.oracle_action+"  ("+agree+")"
+  ].join("\n");
+}
+
 table(el("t-policy"), [
   {h:"policy", f:function(r){return r.policy;}},
   {h:"incidents actioned", f:function(r){return r.incidents_actioned;}},
@@ -628,6 +661,10 @@ function updateCard(e){
       + "forecast from the observed prefix, never the true future."
     : "Expected costs shown for the open incident. No action is recommended until the "
       + "evidence supports one.";
+
+  var dw = el("dossier-wrap");
+  if (campAlerts) { el("dossier").textContent = dossierText(PRIME); dw.hidden = false; }
+  else { dw.hidden = true; dw.open = false; }
 
   var titles = ["Awaiting traffic", "Elevated risk", "Coordination emerging", "Campaign confirmed"];
   el("card-title").textContent = titles[stage];

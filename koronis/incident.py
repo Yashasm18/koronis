@@ -244,6 +244,51 @@ def expected_cost(action: Action, risk: float, remaining_attempts: int) -> float
 AUTONOMOUS_ACTIONS = [a for a in ACTIONS if a.name != "review_only"]
 
 
+# The binding per-entity velocity threshold on this dataset, from the frontier
+# sweep (`results/frontier.csv`): the device counter at tau = 8 is the most
+# sensitive, so it is the one a distributed campaign must stay under. Used only
+# to annotate the dossier; nothing here re-derives it.
+_BINDING_VELOCITY_TAU = 8
+
+
+def dossier(d: dict) -> str:
+    """A human-auditable summary of one consolidated incident.
+
+    `d` is a detail record as written to `results/incidents.csv` /
+    `policy.json` — this only reformats fields already computed elsewhere, so
+    it introduces no new modelling and no schema change.
+    """
+    dev = max(int(d["n_devices"]), 1)
+    ip = max(int(d["n_ips"]), 1)
+    bn = max(int(d["n_bins"]), 1)
+    n = int(d["n_attempts"])
+    act = ACTION_BY_NAME[d["action"]]
+    costs = dict(d["option_costs"])
+    chosen = costs[d["action"]]
+    monitor = costs["monitor"]
+    oracle = d["oracle_action"]
+    agree = "matches" if oracle == d["action"] else f"differs - oracle: {oracle}"
+    uncertain = "  · wide interval -> escalate to review" if d.get("forecast_uncertain") else ""
+    bar = "-" * 70
+    return "\n".join([
+        f"-- Incident Dossier - {d['incident_id']} " + "-" * 40,
+        f"  Spread          {n} alerted attempts - {dev} devices - {ip} IPs - {bn} BINs",
+        f"                  per-entity load {n/dev:.1f}/device, {n/ip:.1f}/IP, "
+        f"{n/bn:.1f}/BIN  (binding velocity tau = {_BINDING_VELOCITY_TAU})",
+        f"  Consolidation   {n} event alerts -> 1 incident - link window 900 s",
+        f"  Incident risk   {d['risk']:.3f}  (recalibrated logistic on calibration incidents)",
+        f"  Forecast        decided after {int(d['observed_at_decision'])} events - "
+        f"remaining P50 {d['forecast_remaining_p50']:.0f} "
+        f"[P90 {d['forecast_remaining_p90']:.0f}]{uncertain}",
+        f"                  exposure P50 INR {d['forecast_exposure_p50_inr']:,.0f} "
+        f"[P90 INR {d['forecast_exposure_p90_inr']:,.0f}]",
+        f"  Recommendation  {act.name} - {act.blurb}",
+        f"                  expected INR {chosen:,.0f}  vs INR {monitor:,.0f} to keep monitoring",
+        f"                  oracle action: {oracle}  ({agree})",
+        bar,
+    ])
+
+
 def choose_action(risk: float, remaining_attempts: int) -> tuple[Action, list[tuple[str, float]]]:
     """Lowest expected cost, not highest risk score.
 

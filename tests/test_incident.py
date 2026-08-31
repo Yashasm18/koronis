@@ -6,8 +6,39 @@ from koronis.data.campaigns import inject
 from koronis.data.schema import CampaignSpec
 from koronis.eval.policy import evaluate_policies, incident_reliability
 from koronis.incident import (
-    ACTION_BY_NAME, IncidentRisk, build_incidents, choose_action, expected_cost,
+    ACTION_BY_NAME, IncidentRisk, build_incidents, choose_action, dossier,
+    expected_cost,
 )
+
+
+def _detail_record(**over):
+    d = dict(incident_id="INC-007", risk=1.0, n_attempts=395, n_devices=60,
+             n_ips=60, n_bins=60, observed_at_decision=12,
+             forecast_remaining_p50=309.4, forecast_remaining_p90=557.0,
+             forecast_exposure_p50_inr=22583.59, forecast_exposure_p90_inr=40657.51,
+             forecast_uncertain=False, true_remaining_attempts=399,
+             true_remaining_exposure_inr=29127.0, genuine=True,
+             action="hold_review", oracle_action="hold_review",
+             option_costs={"monitor": 22557.0, "rate_limit": 10270.65,
+                           "step_up": 3733.55, "hold_review": 1684.71})
+    d.update(over)
+    return d
+
+
+def test_dossier_reports_only_computed_fields():
+    text = dossier(_detail_record())
+    # spread and the reuse ratio it implies
+    assert "395 alerted attempts - 60 devices - 60 IPs - 60 BINs" in text
+    assert "6.6/device" in text
+    # the chosen action and the monitor comparison, straight from option_costs
+    assert "hold_review" in text and "1,685" in text and "22,557" in text
+    assert "(matches)" in text          # oracle agrees on this incident
+
+
+def test_dossier_flags_a_disagreeing_oracle_and_wide_interval():
+    text = dossier(_detail_record(oracle_action="monitor", forecast_uncertain=True))
+    assert "differs - oracle: monitor" in text
+    assert "escalate to review" in text
 
 
 @pytest.fixture(scope="module")

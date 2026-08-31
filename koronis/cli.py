@@ -33,7 +33,7 @@ from .models.velocity import MultiEntityVelocityDetector, tune_velocity
 from .drift import DriftMonitor
 from .forecast import ExposureForecaster, build_snapshots, evaluate_forecast
 from .profiles import BASE, SHIFTED
-from .incident import ACTION_BY_NAME, IncidentRisk, build_incidents
+from .incident import ACTION_BY_NAME, IncidentRisk, build_incidents, dossier
 from .eval.policy import evaluate_policies, incident_reliability
 from .stream import StreamingKoronis
 
@@ -453,6 +453,11 @@ def incidents() -> pd.DataFrame:
         print(f"  {d['incident_id']}  risk {d['risk']:.3f}  {d['n_attempts']:>4} attempts  "
               f"{d['n_devices']:>3}dev {d['n_ips']:>3}ip {d['n_bins']:>3}bin  "
               f"genuine={str(d['genuine']):>5}  -> {d['action']}")
+
+    if detail:
+        lead = max(detail, key=lambda x: (x["risk"], x["n_attempts"]))
+        print()
+        print(dossier(lead))
     print("\nincident-level reliability (measured, not inherited):")
     print(rel.dropna().to_string(index=False))
     print(f"\nremaining-exposure forecast, fitted on {len(cal_snaps)} calibration "
