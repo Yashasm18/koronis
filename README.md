@@ -101,6 +101,27 @@ against the per-transaction model's 0.09; by ten minutes it is at 0.88 precision
 recall still at 1.00. None of the three learning-free detectors ever crosses its frozen
 threshold on this campaign.
 
+**An alert is not a task.** Four hundred event alerts are one campaign, so Koronis
+consolidates them and picks the intervention with the lowest expected rupee cost — not the
+one matching the highest risk score:
+
+```
+414 event alerts  ->  17 incidents  ->  1 action recommended
+```
+
+Median across 8 independent test streams, with the policy seeing only the first 12 events
+of an incident plus a forecast — never the true remaining count:
+
+| policy | analyst minutes | merchant cost |
+|---|---:|---:|
+| always hold | 234.0 | ₹1,21,644 |
+| event-by-event thresholding | 214.8 | ₹19,167 |
+| **causal policy** *(forecast only)* | **12.0** | **₹16,240** |
+| oracle *(upper bound, knows the future)* | 12.0 | ₹8,691 |
+
+Event thresholding reaches the same decision and hands an analyst **eighteen times the
+triage**. Consolidation, not detection, is the difference.
+
 ## Architecture
 
 ```mermaid
