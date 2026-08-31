@@ -84,6 +84,14 @@ a 4×4 grid (`python -m koronis.cli frontier`):
 The binding threshold is `τ = 8` (the device counter; `τ_ip = 61`, `τ_bin = 236`). Every
 cell agrees with `k ≥ n/τ` (**16 / 16**). Koronis detects in all sixteen.
 
+![Detectability frontier: 16 measured cells against the boundary k = n/τ](docs/assets/frontier.svg)
+
+The dashed line is computed from arithmetic before any run. Every measured cell lands on
+the side it predicts, and Koronis detects across the whole grid — including the entire
+region above the line, where no per-entity counter can trip at any threshold. The chart is
+[interactive on the demo site](https://yashasm18.github.io/koronis/); both are generated
+from `results/frontier.csv`.
+
 **Held-out detection**, median with the 2.5th / 97.5th percentiles observed across 10
 independent trials (`python -m koronis.cli seeds`):
 
@@ -175,6 +183,28 @@ flowchart TB
    ```
 
 The third-party surface is `numpy`, `pandas`, `scikit-learn`, `lightgbm`, `torch`.
+
+### Where a learned model is deliberately not used
+
+Most of this pipeline is not machine learning, and that is a design decision rather than
+an omission. A learned model earns its place only where the quantity is genuinely not
+computable in closed form; everywhere else it adds variance, opacity and a training
+dependency for nothing.
+
+| Step | What it uses | Why not a model |
+|---|---|---|
+| Detectability boundary | arithmetic, `k ≥ n/τ` | Derived on paper before any run, then tested. A fitted curve would have described the same fact with less certainty and no explanation. |
+| Incident consolidation | union-find over shared entities | "Same incident" *is* connectivity, not similarity. Clustering would impose a distance metric and a `k` on a question that already has an exact answer. |
+| Velocity baseline tuning | deterministic threshold search under a stated FP budget | The baseline should be as strong as it can honestly be made, not as weak as a default makes it. |
+| Drift detection | Population Stability Index | A standard payments-risk statistic a reviewer can read and re-derive. A learned detector would raise the same flags while making "why" unanswerable. |
+| Action selection | `argmin` of expected rupee cost | Four actions with declared costs and a risk estimate — the optimum is a closed-form comparison. A learned policy would need a reward signal that does not exist offline. |
+
+Two places do need learning, because the quantity has no closed form: **relational message
+passing with a heterophily gate**, which has to discover which relations carry coordination
+against camouflage, and the **conformal quantile forecaster**, which estimates remaining
+exposure under uncertainty. Both are measured in [Evaluation](#evaluation), and the
+per-relation ablation shows two of the four relations are net-negative — that is the same
+discipline applied to the learned half.
 
 ## Installation
 

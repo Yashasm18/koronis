@@ -1,0 +1,72 @@
+<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 760 300' width='760' height='300' role='img' aria-label='Detectability frontier: 16 measured cells against the predicted boundary k = n over tau'>
+<rect width='760' height='300' fill='none'/>
+<path d='M54.0,152.3 L628.0,26.1 L628.0,22 L54.0,22 Z' fill='#D2402F' fill-opacity='.09'/>
+<line x1='54.0' y1='152.3' x2='628.0' y2='26.1' stroke='#D2402F' stroke-width='1.6' stroke-dasharray='6 4'/>
+<path d='M54,22 L54,260 L628,260' fill='none' stroke='#8A94A6' stroke-opacity='.5'/>
+<text x='46' y='246.5' font-family='ui-monospace,SFMono-Regular,Menlo,monospace' font-size='10' fill='#8A94A6' text-anchor='end'>k=2</text>
+<text x='46' y='176.8' font-family='ui-monospace,SFMono-Regular,Menlo,monospace' font-size='10' fill='#8A94A6' text-anchor='end'>k=10</text>
+<text x='46' y='107.2' font-family='ui-monospace,SFMono-Regular,Menlo,monospace' font-size='10' fill='#8A94A6' text-anchor='end'>k=50</text>
+<text x='46' y='47.2' font-family='ui-monospace,SFMono-Regular,Menlo,monospace' font-size='10' fill='#8A94A6' text-anchor='end'>k=200</text>
+<text x='138.8' y='276' font-family='ui-monospace,SFMono-Regular,Menlo,monospace' font-size='10' fill='#8A94A6' text-anchor='middle'>200</text>
+<text x='275.3' y='276' font-family='ui-monospace,SFMono-Regular,Menlo,monospace' font-size='10' fill='#8A94A6' text-anchor='middle'>400</text>
+<text x='411.7' y='276' font-family='ui-monospace,SFMono-Regular,Menlo,monospace' font-size='10' fill='#8A94A6' text-anchor='middle'>800</text>
+<text x='548.2' y='276' font-family='ui-monospace,SFMono-Regular,Menlo,monospace' font-size='10' fill='#8A94A6' text-anchor='middle'>1600</text>
+<text x='341.0' y='292' font-family='ui-monospace,SFMono-Regular,Menlo,monospace' font-size='10' fill='#8A94A6' text-anchor='middle'>attempts n</text>
+<text x='60' y='73.7' font-family='ui-monospace,SFMono-Regular,Menlo,monospace' font-size='10' fill='#8A94A6'>velocity blind — no counter can trip</text>
+<text x='60' y='208.2' font-family='ui-monospace,SFMono-Regular,Menlo,monospace' font-size='10' fill='#8A94A6'>velocity fires</text>
+<circle cx='138.8' cy='243.0' r='9' fill='#8A94A6' fill-opacity='.12' stroke='#8A94A6' stroke-width='1.4'/>
+<circle cx='138.8' cy='243.0' r='3.4' fill='#3B7DF0'/>
+<path d='M136.3,254.5 l2,2 l3.5,-4' fill='none' stroke='#15A06B' stroke-width='1.6' stroke-linecap='round'/>
+<circle cx='138.8' cy='173.3' r='9' fill='#8A94A6' fill-opacity='.12' stroke='#8A94A6' stroke-width='1.4'/>
+<circle cx='138.8' cy='173.3' r='3.4' fill='#3B7DF0'/>
+<path d='M136.3,184.8 l2,2 l3.5,-4' fill='none' stroke='#15A06B' stroke-width='1.6' stroke-linecap='round'/>
+<circle cx='138.8' cy='103.7' r='9' fill='#D2402F' fill-opacity='.12' stroke='#D2402F' stroke-width='1.4'/>
+<circle cx='138.8' cy='103.7' r='3.4' fill='#3B7DF0'/>
+<path d='M136.3,115.2 l2,2 l3.5,-4' fill='none' stroke='#15A06B' stroke-width='1.6' stroke-linecap='round'/>
+<circle cx='138.8' cy='43.7' r='9' fill='#D2402F' fill-opacity='.12' stroke='#D2402F' stroke-width='1.4'/>
+<circle cx='138.8' cy='43.7' r='3.4' fill='#3B7DF0'/>
+<path d='M136.3,55.2 l2,2 l3.5,-4' fill='none' stroke='#15A06B' stroke-width='1.6' stroke-linecap='round'/>
+<circle cx='275.3' cy='243.0' r='9' fill='#8A94A6' fill-opacity='.12' stroke='#8A94A6' stroke-width='1.4'/>
+<circle cx='275.3' cy='243.0' r='3.4' fill='#3B7DF0'/>
+<path d='M272.8,254.5 l2,2 l3.5,-4' fill='none' stroke='#15A06B' stroke-width='1.6' stroke-linecap='round'/>
+<circle cx='275.3' cy='173.3' r='9' fill='#8A94A6' fill-opacity='.12' stroke='#8A94A6' stroke-width='1.4'/>
+<circle cx='275.3' cy='173.3' r='3.4' fill='#3B7DF0'/>
+<path d='M272.8,184.8 l2,2 l3.5,-4' fill='none' stroke='#15A06B' stroke-width='1.6' stroke-linecap='round'/>
+<circle cx='275.3' cy='103.7' r='9' fill='#D2402F' fill-opacity='.12' stroke='#D2402F' stroke-width='1.4'/>
+<circle cx='275.3' cy='103.7' r='3.4' fill='#3B7DF0'/>
+<path d='M272.8,115.2 l2,2 l3.5,-4' fill='none' stroke='#15A06B' stroke-width='1.6' stroke-linecap='round'/>
+<circle cx='275.3' cy='43.7' r='9' fill='#D2402F' fill-opacity='.12' stroke='#D2402F' stroke-width='1.4'/>
+<circle cx='275.3' cy='43.7' r='3.4' fill='#3B7DF0'/>
+<path d='M272.8,55.2 l2,2 l3.5,-4' fill='none' stroke='#15A06B' stroke-width='1.6' stroke-linecap='round'/>
+<circle cx='411.7' cy='243.0' r='9' fill='#8A94A6' fill-opacity='.12' stroke='#8A94A6' stroke-width='1.4'/>
+<circle cx='411.7' cy='243.0' r='3.4' fill='#3B7DF0'/>
+<path d='M409.2,254.5 l2,2 l3.5,-4' fill='none' stroke='#15A06B' stroke-width='1.6' stroke-linecap='round'/>
+<circle cx='411.7' cy='173.3' r='9' fill='#8A94A6' fill-opacity='.12' stroke='#8A94A6' stroke-width='1.4'/>
+<circle cx='411.7' cy='173.3' r='3.4' fill='#3B7DF0'/>
+<path d='M409.2,184.8 l2,2 l3.5,-4' fill='none' stroke='#15A06B' stroke-width='1.6' stroke-linecap='round'/>
+<circle cx='411.7' cy='103.7' r='9' fill='#8A94A6' fill-opacity='.12' stroke='#8A94A6' stroke-width='1.4'/>
+<circle cx='411.7' cy='103.7' r='3.4' fill='#3B7DF0'/>
+<path d='M409.2,115.2 l2,2 l3.5,-4' fill='none' stroke='#15A06B' stroke-width='1.6' stroke-linecap='round'/>
+<circle cx='411.7' cy='43.7' r='9' fill='#D2402F' fill-opacity='.12' stroke='#D2402F' stroke-width='1.4'/>
+<circle cx='411.7' cy='43.7' r='3.4' fill='#3B7DF0'/>
+<path d='M409.2,55.2 l2,2 l3.5,-4' fill='none' stroke='#15A06B' stroke-width='1.6' stroke-linecap='round'/>
+<circle cx='548.2' cy='243.0' r='9' fill='#8A94A6' fill-opacity='.12' stroke='#8A94A6' stroke-width='1.4'/>
+<circle cx='548.2' cy='243.0' r='3.4' fill='#3B7DF0'/>
+<path d='M545.7,254.5 l2,2 l3.5,-4' fill='none' stroke='#15A06B' stroke-width='1.6' stroke-linecap='round'/>
+<circle cx='548.2' cy='173.3' r='9' fill='#8A94A6' fill-opacity='.12' stroke='#8A94A6' stroke-width='1.4'/>
+<circle cx='548.2' cy='173.3' r='3.4' fill='#3B7DF0'/>
+<path d='M545.7,184.8 l2,2 l3.5,-4' fill='none' stroke='#15A06B' stroke-width='1.6' stroke-linecap='round'/>
+<circle cx='548.2' cy='103.7' r='9' fill='#8A94A6' fill-opacity='.12' stroke='#8A94A6' stroke-width='1.4'/>
+<circle cx='548.2' cy='103.7' r='3.4' fill='#3B7DF0'/>
+<path d='M545.7,115.2 l2,2 l3.5,-4' fill='none' stroke='#15A06B' stroke-width='1.6' stroke-linecap='round'/>
+<circle cx='548.2' cy='43.7' r='9' fill='#D2402F' fill-opacity='.12' stroke='#D2402F' stroke-width='1.4'/>
+<circle cx='548.2' cy='43.7' r='3.4' fill='#3B7DF0'/>
+<path d='M545.7,55.2 l2,2 l3.5,-4' fill='none' stroke='#15A06B' stroke-width='1.6' stroke-linecap='round'/>
+<line x1='644' y1='95.0' x2='653' y2='95.0' stroke='#D2402F' stroke-width='1.6' stroke-dasharray='4 3'/>
+<text x='657' y='98.0' font-family='ui-monospace,SFMono-Regular,Menlo,monospace' font-size='9.5' fill='#D2402F'>k = n / τ,  τ = 8</text>
+<circle cx='648' cy='111.0' r='3.4' fill='#3B7DF0'/>
+<text x='657' y='114.0' font-family='ui-monospace,SFMono-Regular,Menlo,monospace' font-size='9.5' fill='#8A94A6'>koronis detects</text>
+<path d='M645,128.0 l2,2 l4,-5' fill='none' stroke='#15A06B' stroke-width='1.6' stroke-linecap='round'/>
+<text x='657' y='132.0' font-family='ui-monospace,SFMono-Regular,Menlo,monospace' font-size='9.5' fill='#8A94A6'>matches</text>
+<text x='657' y='143.0' font-family='ui-monospace,SFMono-Regular,Menlo,monospace' font-size='9.5' fill='#8A94A6'>prediction</text>
+</svg>

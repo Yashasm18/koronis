@@ -9,8 +9,10 @@ experiment is re-run, rebuilding the site is the only step needed to update it.
 """
 import csv
 import json
+import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 ROOT = Path(__file__).resolve().parent.parent
 RESULTS = ROOT / "results"
 # GitHub Pages serves /docs on the default branch, so the built page lands
@@ -33,6 +35,11 @@ def _bundle() -> dict:
 
 
 def main() -> None:
+    # the README needs a static copy of the frontier chart; GitHub cannot run
+    # the canvas the site uses, so both are emitted from the same artifact
+    import frontier_svg
+    frontier_svg.main()
+
     data = json.dumps(_bundle(), separators=(",", ":"))
     html = (ROOT / "site" / "template.html").read_text()
     OUT.write_text(html.replace("/*__KORONIS_DATA__*/null", data))

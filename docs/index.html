@@ -104,7 +104,7 @@ button.act:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .ph h2{font-size:12.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase}
 .ph .hint{font-family:"IBM Plex Mono",monospace;font-size:10.5px;color:var(--ink-3)}
 canvas{display:block;width:100%;background:var(--canvas-bg)}
-#chart{height:210px} #graph{height:250px}
+#chart{height:210px} #graph{height:250px} #front{height:300px}
 
 /* feed */
 .feed{height:250px;overflow-y:auto;font-family:"IBM Plex Mono",monospace;font-size:11px}
@@ -343,10 +343,15 @@ td.rng{color:var(--ink-3);font-size:10.5px}
         <div class="ph"><h2>Per-event inference</h2><span class="hint" id="bench-hint"></span></div>
         <div class="tbl"><table id="t-bench"></table></div>
       </div>
-      <div class="panel">
-        <div class="ph"><h2>Detectability frontier</h2><span class="hint" id="front-hint"></span></div>
+    </div>
+    <div class="panel">
+      <div class="ph"><h2>Detectability frontier</h2><span class="hint" id="front-hint"></span></div>
+      <canvas id="front"></canvas>
+      <p class="assum" id="front-cap" style="padding:0 14px 10px"></p>
+      <details class="dossier-wrap" style="margin:0 14px 12px">
+        <summary>All 16 cells</summary>
         <div class="tbl"><table id="t-front"></table></div>
-      </div>
+      </details>
     </div>
   </section>
 
@@ -443,7 +448,9 @@ document.querySelectorAll(".tabs button").forEach(function(b){
     b.setAttribute("aria-selected","true");
     document.querySelectorAll(".tab").forEach(function(s){s.classList.remove("on");});
     el("tab-" + b.dataset.tab).classList.add("on");
+    // canvases measure 0 while their tab is display:none, so paint on reveal
     if(b.dataset.tab === "replay"){drawChart(); drawGraph();}
+    if(b.dataset.tab === "eval"){drawFront();}
   });
 });
 
@@ -578,6 +585,105 @@ table(el("t-bench"), [
 ]);
 el("bench-hint").textContent = num(D.bench.n_measured)+" events after "+D.bench.n_warmup+" warm-up";
 
+/* ── detectability frontier ────────────────────────────────
+   The whole claim in one picture: a boundary line k = n/tau drawn from
+   arithmetic alone, and every measured cell landing on the side the
+   arithmetic predicted. Log-log, because both axes span a decade. */
+var FR = D.frontier.map(function(r){
+  return {n:+r.n, k:+r.k, bound:+r.predicted_k_boundary, tau:+r.tau_binding,
+          velFires: r.velocity_detected === "True",
+          kor: r.koronis_detected === "True",
+          predBlind: r.velocity_blind_predicted === "True"};
+});
+var fc = el("front"), fx = fc.getContext("2d"), FHIT = [];
+function drawFront(){
+  var d = devicePixelRatio||1, w = fc.clientWidth, h = fc.clientHeight;
+  if(!w || !h) return;   // tab still hidden; it repaints when revealed
+  fc.width = w*d; fc.height = h*d; fx.setTransform(d,0,0,d,0,0);
+  fx.clearRect(0,0,w,h);
+  var P = {l:52,r:130,t:18,b:38}, pw = w-P.l-P.r, ph = h-P.t-P.b;
+  /* domains are padded past the measured grid so no cell sits on an axis */
+  var NS=[130,2400], KS=[1.35,330], L=Math.log;
+  var X = function(n){return P.l + (L(n)-L(NS[0]))/(L(NS[1])-L(NS[0]))*pw;};
+  var Y = function(k){return P.t + ph - (L(k)-L(KS[0]))/(L(KS[1])-L(KS[0]))*ph;};
+  var tau = FR.length ? FR[0].tau : 8;
+
+  /* blind region: everything at or above k = n/tau */
+  fx.beginPath();
+  fx.moveTo(X(NS[0]), Y(NS[0]/tau)); fx.lineTo(X(NS[1]), Y(NS[1]/tau));
+  fx.lineTo(X(NS[1]), P.t); fx.lineTo(X(NS[0]), P.t); fx.closePath();
+  fx.fillStyle = css("--crit-soft"); fx.fill();
+
+  /* axes + ticks */
+  fx.strokeStyle = css("--line"); fx.lineWidth = 1;
+  fx.beginPath(); fx.moveTo(P.l,P.t); fx.lineTo(P.l,P.t+ph); fx.lineTo(P.l+pw,P.t+ph); fx.stroke();
+  fx.fillStyle = css("--ink-3"); fx.font = '10px "IBM Plex Mono", monospace';
+  fx.textAlign="right";
+  [2,10,50,200].forEach(function(k){ fx.fillText("k="+k, P.l-7, Y(k)+3); });
+  fx.textAlign="center";
+  [200,400,800,1600].forEach(function(n){ fx.fillText(n, X(n), P.t+ph+16); });
+  fx.fillText("attempts n", P.l+pw/2, P.t+ph+32);
+
+  /* the predicted boundary, clipped to the plot box */
+  fx.save(); fx.beginPath(); fx.rect(P.l, P.t, pw, ph); fx.clip();
+  fx.strokeStyle = css("--crit"); fx.lineWidth = 1.6; fx.setLineDash([6,4]);
+  fx.beginPath(); fx.moveTo(X(NS[0]), Y(NS[0]/tau)); fx.lineTo(X(NS[1]), Y(NS[1]/tau));
+  fx.stroke(); fx.setLineDash([]); fx.restore();
+  fx.fillStyle = css("--ink-3"); fx.textAlign="left";
+  var KSS = FR.map(function(c){return c.k;}).filter(function(v,i,a){return a.indexOf(v)===i;})
+              .sort(function(a,b){return a-b;});
+  fx.fillText("velocity blind \u2014 no counter can trip", P.l+6,
+              (Y(KSS[KSS.length-1]) + Y(KSS[KSS.length-2]))/2);
+  fx.fillText("velocity fires", P.l+6, (Y(KSS[0]) + Y(KSS[1]))/2);
+
+  /* measured cells */
+  FHIT = [];
+  FR.forEach(function(c){
+    var x = X(c.n), y = Y(c.k), ok = (c.velFires !== c.predBlind);
+    fx.beginPath(); fx.arc(x, y, 9, 0, 6.284);
+    fx.fillStyle = c.velFires ? css("--calm-soft") : css("--crit-soft"); fx.fill();
+    fx.strokeStyle = c.velFires ? css("--calm") : css("--crit");
+    fx.lineWidth = 1.4; fx.stroke();
+    /* koronis detects every cell: a filled core marks it */
+    if(c.kor){ fx.beginPath(); fx.arc(x, y, 3.4, 0, 6.284);
+               fx.fillStyle = css("--accent"); fx.fill(); }
+    if(ok){ fx.strokeStyle = css("--ok"); fx.lineWidth = 1.6;
+            fx.beginPath(); fx.moveTo(x-2.5, y+11.5); fx.lineTo(x-0.5, y+13.5);
+            fx.lineTo(x+3, y+9.5); fx.stroke(); }
+    FHIT.push({x:x, y:y, c:c});
+  });
+
+  /* legend */
+  fx.textAlign="left"; fx.font = '9.5px "IBM Plex Mono", monospace';
+  var lx = P.l+pw+16, ly = P.t+ph/2-30;
+  fx.strokeStyle = css("--crit"); fx.lineWidth=1.6; fx.setLineDash([4,3]);
+  fx.beginPath(); fx.moveTo(lx, ly-16); fx.lineTo(lx+9, ly-16); fx.stroke();
+  fx.setLineDash([]);
+  fx.fillStyle = css("--crit");
+  fx.fillText("k = n / \u03C4,  \u03C4 = "+tau, lx+13, ly-13);
+  fx.fillStyle = css("--accent");
+  fx.beginPath(); fx.arc(lx+4, ly, 3.4, 0, 6.284); fx.fill();
+  fx.fillStyle = css("--ink-2"); fx.fillText("koronis detects", lx+13, ly+3);
+  fx.strokeStyle = css("--ok"); fx.lineWidth=1.6;
+  fx.beginPath(); fx.moveTo(lx+1, ly+17); fx.lineTo(lx+3, ly+19);
+  fx.lineTo(lx+7, ly+14); fx.stroke();
+  fx.fillStyle = css("--ink-2"); fx.fillText("matches", lx+13, ly+21);
+  fx.fillText("prediction", lx+13, ly+32);
+}
+fc.addEventListener("mousemove", function(e){
+  var r = fc.getBoundingClientRect(), mx = e.clientX-r.left, my = e.clientY-r.top;
+  var hit = FHIT.filter(function(p){
+    return Math.hypot(p.x-mx, p.y-my) < 12; })[0];
+  fc.style.cursor = hit ? "pointer" : "default";
+  el("front-cap").textContent = hit
+    ? "n = "+hit.c.n+", k = "+hit.c.k+"  \u00b7  boundary n/\u03C4 = "+hit.c.bound
+      +"  \u00b7  velocity "+(hit.c.velFires?"fires":"blind")
+      +", predicted "+(hit.c.predBlind?"blind":"fires")
+      +"  \u00b7  koronis "+(hit.c.kor?"detects":"misses")
+    : FRONT_CAP;
+});
+fc.addEventListener("mouseleave", function(){ el("front-cap").textContent = FRONT_CAP; });
+
 var agree = D.frontier.filter(function(r){
   return (r.velocity_blind_predicted==="True") === (r.velocity_detected==="False");}).length;
 table(el("t-front"), [
@@ -588,6 +694,12 @@ table(el("t-front"), [
   {h:"koronis", f:function(r){return r.koronis_detected==="True"?"detects":"—";}},
 ], D.frontier);
 el("front-hint").textContent = "prediction matches observation on "+agree+" / "+D.frontier.length+" cells";
+var FRONT_CAP = "Each circle is one measured cell. The dashed line is k = n/\u03C4, "
+  + "computed from the binding velocity threshold before any run. Cells above it are "
+  + "unreachable by any per-entity counter; Koronis detects in all "+D.frontier.length
+  + ". Hover a cell for its numbers.";
+el("front-cap").textContent = FRONT_CAP;
+drawFront();
 
 /* ── replay state ──────────────────────────────────────────── */
 var i = 0, t = T_START, playing = false, raf = null;
@@ -881,7 +993,7 @@ function doReset(){
   var dw = el("dossier-wrap");
   dw.hidden = true; dw.open = false; el("dossier").textContent = "";
 }
-addEventListener("resize", function(){drawChart(); drawGraph();});
+addEventListener("resize", function(){drawChart(); drawGraph(); drawFront();});
 
 setStage(0); render();
 if(reduce){ seen = EV.slice(); alerts = EV.filter(function(e){return e.alert;}).length;
