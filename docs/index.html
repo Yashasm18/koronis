@@ -149,6 +149,12 @@ canvas{display:block;width:100%;background:var(--canvas-bg)}
 .dossier-wrap{margin-top:10px;border-top:1px solid var(--line);padding-top:8px}
 .dossier-wrap summary{cursor:pointer;font-size:10.5px;letter-spacing:.08em;
   text-transform:uppercase;color:var(--ink-3)}
+.dossier-head{display:flex;justify-content:flex-end;margin-top:6px}
+.copy{font:inherit;font-size:10px;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--ink-3);background:transparent;border:1px solid var(--line);
+  border-radius:4px;padding:3px 8px;cursor:pointer}
+.copy:hover{color:var(--ink-2);border-color:var(--line-soft)}
+.copy.ok{color:var(--accent);border-color:var(--accent)}
 .dossier{margin:8px 0 0;font-family:"IBM Plex Mono",monospace;font-size:10.5px;
   line-height:1.6;color:var(--ink-2);white-space:pre-wrap;overflow-x:auto}
 
@@ -247,6 +253,10 @@ td.rng{color:var(--ink-3);font-size:10.5px}
           </div>
           <details class="dossier-wrap" id="dossier-wrap" hidden>
             <summary>Audit dossier</summary>
+            <div class="dossier-head">
+              <button type="button" class="copy" id="copy-dossier"
+                      aria-live="polite">Copy dossier</button>
+            </div>
             <pre class="dossier" id="dossier"></pre>
           </details>
         </div>
@@ -832,6 +842,32 @@ el("play").addEventListener("click", function(){
   playing = true; this.textContent = "Pause"; step();
 });
 el("reset").addEventListener("click", doReset);
+
+/* Copy the dossier as plain text, so an analyst can paste it into a ticket.
+   execCommand is the fallback: navigator.clipboard needs a secure context and
+   is absent when the page is opened straight off the filesystem. */
+el("copy-dossier").addEventListener("click", function(){
+  var btn = this, text = el("dossier").textContent;
+  function done(ok){
+    btn.textContent = ok ? "Copied" : "Press ⌘C";
+    btn.classList.toggle("ok", ok);
+    if(!ok){ var r = document.createRange(); r.selectNodeContents(el("dossier"));
+             var s = getSelection(); s.removeAllRanges(); s.addRange(r); }
+    setTimeout(function(){ btn.textContent = "Copy dossier";
+                           btn.classList.remove("ok"); }, 1800);
+  }
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(function(){done(true);},
+                                            function(){done(false);});
+    return;
+  }
+  var ta = document.createElement("textarea");
+  ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+  document.body.appendChild(ta); ta.select();
+  var ok = false;
+  try { ok = document.execCommand("copy"); } catch(e) { ok = false; }
+  document.body.removeChild(ta); done(ok);
+});
 function doReset(){
   playing=false; cancelAnimationFrame(raf);
   i=0; t=T_START; seen=[]; alerts=0; lastAlert=null; gpos={};
@@ -840,6 +876,10 @@ function doReset(){
   el("card-why").innerHTML = "Press <b>Replay incident</b> to stream the held-out campaign one event at a time.";
   el("card-title").textContent = "Awaiting traffic";
   el("incbar").innerHTML = "<span>no incident open</span>";
+  // updateCard() returns early with no event to describe, so the dossier from
+  // the previous run would otherwise survive the reset.
+  var dw = el("dossier-wrap");
+  dw.hidden = true; dw.open = false; el("dossier").textContent = "";
 }
 addEventListener("resize", function(){drawChart(); drawGraph();});
 
