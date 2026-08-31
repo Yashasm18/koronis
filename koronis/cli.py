@@ -11,6 +11,7 @@
     python -m koronis.cli drift       # traffic-profile transfer stress test
     python -m koronis.cli relations   # which entity type carries the signal
     python -m koronis.cli aperture    # merchant view vs gateway view
+    python -m koronis.cli architecture # do the gate and the attention earn their place
 """
 import json
 import sys
@@ -351,6 +352,85 @@ def mechanism(n_seeds: int = 5) -> pd.DataFrame:
     print(f"\nmechanism ablation, {n_seeds} trials, medians\n")
     print(summary.to_string(index=False))
     return summary
+
+
+# Architecture ablations. These test the MODEL, not the data sources the
+# mechanism ablation covers: the heterophily gate and the learned relation
+# attention are design claims made in layers.py, and until they are removed
+# and re-measured they are only assertions.
+ARCH_VARIANTS = {
+    "full": dict(),
+    "no_gate": dict(use_gate=False),
+    "uniform_relation_attention": dict(use_rel_attention=False),
+    "one_layer": dict(layers=1),
+}
+
+# The gate's justification is specific, so the test can be too. It exists to
+# damp edges joining DISSIMILAR nodes, and camouflage is exactly what creates
+# those: a camouflaged attempt draws its amount and email domain from the
+# background, so it links to legitimate traffic that looks nothing like the
+# rest of the ring. The prediction is therefore conditional - the gate should
+# buy more as camouflage rises, and little at camouflage 0 where the campaign
+# is separable per-event anyway. A flat difference would mean the gate helps
+# for some other reason and the stated justification is wrong.
+ARCH_CAMOS = (0.0, 0.5, 1.0)
+
+
+def architecture(n_seeds: int = 5) -> pd.DataFrame:
+    """Do the two architectural claims survive being removed?
+
+    Same three-split protocol as every other ablation: fit on train, freeze a
+    cost-optimal threshold on calibration, report on the held-out test stream.
+    Swept across camouflage, because the gate's justification predicts its
+    benefit should depend on it.
+    """
+    rows = []
+    for seed in range(n_seeds):
+        train = _train_set(seed * 10)
+        calib = _calibration_set(seed * 10 + 2)
+        y_cal = calib["label"].to_numpy()
+        # Training does not depend on the TEST camouflage, so each variant is
+        # fitted once per seed and then met with all three test streams. That
+        # is also the cleaner comparison: one model, varying only the attack.
+        tests = {c: _dataset(seed * 10 + 1, TEST_K, c) for c in ARCH_CAMOS}
+        for name, kw in ARCH_VARIANTS.items():
+            m = KoronisDetector(seed=seed, window_s=WINDOW_S, **kw)
+            m.fit(train, epochs=60)
+            thr, _ = cost_optimal_threshold(_raw(m.score_events(calib)), y_cal,
+                                            COST_PER_ATTEMPT_INR,
+                                            COST_PER_FALSE_BLOCK_INR)
+            for camo, test in tests.items():
+                y = test["label"].to_numpy()
+                sc = _raw(m.score_events(test))
+                fired = sc >= thr
+                rows.append({
+                    "seed": seed, "camouflage": camo, "variant": name,
+                    "pr_auc": round(float(average_precision_score(y, sc)), 4),
+                    "precision": round(float(precision_score(y, fired, zero_division=0)), 4),
+                    "recall": round(float(recall_score(y, fired, zero_division=0)), 4),
+                    "false_positives": int((fired & (y == 0)).sum()),
+                })
+
+    allr = pd.DataFrame(rows)
+    RESULTS.mkdir(exist_ok=True)
+    allr.to_csv(RESULTS / "architecture_raw.csv", index=False)
+
+    med = (allr.groupby(["camouflage", "variant"], sort=False)
+           [["pr_auc", "precision", "recall", "false_positives"]]
+           .median().round(4).reset_index())
+    med.to_csv(RESULTS / "architecture.csv", index=False)
+
+    wide = med.pivot(index="camouflage", columns="variant", values="pr_auc")
+    for v in ARCH_VARIANTS:
+        if v != "full":
+            wide[f"delta_{v}"] = (wide["full"] - wide[v]).round(4)
+    wide.to_csv(RESULTS / "architecture_delta.csv")
+
+    print(f"\narchitecture ablation, {n_seeds} trials, medians\n")
+    print(med.to_string(index=False))
+    print("\nPR-AUC, and what removing each piece costs:")
+    print(wide.to_string())
+    return med
 
 
 APERTURE_MERCHANTS = (1, 2, 4, 8, 16)
@@ -967,4 +1047,5 @@ if __name__ == "__main__":
     {"ablation": ablation, "frontier": frontier, "latency": latency,
      "seeds": seeds, "replay": replay, "benchmark": benchmark,
      "mechanism": mechanism, "incidents": incidents, "drift": drift,
-     "relations": relations, "aperture": aperture}[cmd]()
+     "relations": relations, "aperture": aperture,
+     "architecture": architecture}[cmd]()

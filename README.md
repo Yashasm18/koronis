@@ -3,7 +3,7 @@
 > Detection of distributed card-testing campaigns that per-entity velocity rules cannot see at any threshold.
 
 [![CI](https://github.com/Yashasm18/koronis/actions/workflows/ci.yml/badge.svg)](https://github.com/Yashasm18/koronis/actions/workflows/ci.yml)
-[![tests](https://img.shields.io/badge/tests-99%20passing-2ea44f)](tests/)
+[![tests](https://img.shields.io/badge/tests-105%20passing-2ea44f)](tests/)
 [![python](https://img.shields.io/badge/python-3.14-3776ab)](https://www.python.org/)
 [![license: MIT](https://img.shields.io/badge/license-MIT-yellow)](LICENSE)
 [![graph libs](https://img.shields.io/badge/graph%20libraries-none-8a3ffc)](koronis/models/layers.py)
@@ -38,10 +38,11 @@ recall on a held-out test set, false-positive cost in rupees, and detection late
 because damage accrues from the moment a campaign starts.
 
 The detector is a **temporal heterogeneous graph network written from scratch** —
-relational message passing with learned per-relation attention and a heterophily gate,
-trained on expected rupee cost rather than cross-entropy, and inductive, so it scores
-entities it has never seen. It is 6,225 parameters; the structure carries the signal, so
-the model does not have to be large.
+relational message passing with per-relation weights, learned relation attention and a
+heterophily gate, trained on expected rupee cost rather than cross-entropy, and inductive,
+so it scores entities it has never seen. It is 6,225 parameters; the structure carries the
+signal, so the model does not have to be large. Each of those design decisions is
+[ablated](#does-the-architecture-earn-its-place), and one of them does not survive.
 
 Its central contribution, though, is not that the model beats its baselines. It is a
 **characterisation of when detection is possible at all**, stated as arithmetic and then
@@ -138,7 +139,7 @@ threshold on this campaign.
 flowchart TB
     IN["<b>Attempt stream</b> — ts · amount · auth outcome · device · IP · BIN · email"]
     G["<b>Temporal graph</b>, strictly causal — backwards-in-time edges · window 3600 s · fan-in ≤ 32"]
-    MP["<b>Relational message passing</b>, written from scratch — torch.index_add_ · heterophily gate · 2 layers · cost-sensitive loss trained on rupees"]
+    MP["<b>Relational message passing</b>, written from scratch — torch.index_add_ · per-relation weights · 2 layers · cost-sensitive loss trained on rupees"]
     SC{"score ≥ frozen threshold?"}
     CON["<b>Incident consolidation</b> — union-find on the alerted subgraph · links only via values &lt; 2% of stream"]
     FC["<b>Incident risk + exposure forecast</b> — separately recalibrated risk · P50/P90 from the first 12 events · conformal band"]
@@ -174,8 +175,12 @@ flowchart TB
 
    `a_r` is a learned softmax over relations, so the model discovers which entity type
    carries the signal. `g` is a **heterophily gate** scoring each edge from the feature
-   difference between its endpoints, because fraud rings deliberately attach to legitimate
-   traffic as camouflage and vanilla GNNs assume connected nodes share labels.
+   difference between its endpoints — the reasoning being that fraud rings attach to
+   legitimate traffic as camouflage, and vanilla GNNs assume connected nodes share labels.
+   That reasoning did not survive measurement: the
+   [architecture ablation](#does-the-architecture-earn-its-place) finds the gate is
+   net-negative, while the **second layer** is the component that actually earns its
+   place.
 
 4. **Inductive by construction.** No per-entity embedding tables — entity ids only decide
    which events share an edge — so the model scores devices and IPs it has never seen.
@@ -202,7 +207,8 @@ form, and each is measured rather than asserted:
 | Component | What it learns | Measured in |
 |---|---|---|
 | Relational message passing ([`layers.py`](koronis/models/layers.py)) | which entity relations carry coordination, via a learned softmax `a_r` over relations | [per-relation ablation](#which-entity-type-carries-the-signal) — BIN carries it; device and email are net-negative |
-| Heterophily gate `g(x_u,x_v) = σ(W·abs(x_u−x_v))` | which edges to damp, so camouflage edges into legitimate traffic dilute less | [mechanism ablation](#which-mechanism-carries-the-signal) — the graph half is what buys precision |
+| Heterophily gate `g(x_u,x_v) = σ(W·abs(x_u−x_v))` | which edges to damp, intended for camouflage edges into legitimate traffic | [architecture ablation](#does-the-architecture-earn-its-place) — **measured net-negative**; kept, and reported, rather than quietly removed |
+| Depth — 2 relational layers | coordination visible two hops out, which is what survives camouflage | [architecture ablation](#does-the-architecture-earn-its-place) — +0.041 PR-AUC at full camouflage, better on 15/15 cells |
 | Cost-sensitive objective ([`loss.py`](koronis/models/loss.py)) | a decision boundary in rupees, not in cross-entropy | false-positive counts in [held-out detection](#key-results) |
 | Incident risk — L2 logistic, fitted by gradient descent | whether a *consolidated incident* is genuine; event calibration does not transfer, because events inside one are dependent | [incident-level calibration](#incident-level-calibration) |
 | Quantile regression + split conformal ([`forecast.py`](koronis/forecast.py)) | how many attempts remain, and an interval it can defend | [exposure forecast](#exposure-forecast) — 96.6% coverage against a 90% target |
@@ -239,6 +245,7 @@ python -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/python -m koronis.cli mechanism     # which mechanism carries the signal
 .venv/bin/python -m koronis.cli relations     # which entity type carries the signal
 .venv/bin/python -m koronis.cli incidents     # alerts -> incidents -> forecast -> action
+.venv/bin/python -m koronis.cli architecture  # do the gate and the attention earn their place
 .venv/bin/python -m koronis.cli aperture      # merchant view vs gateway view
 .venv/bin/python -m koronis.cli drift         # traffic-profile transfer stress test
 .venv/bin/python -m koronis.cli replay        # causal event-by-event replay -> JSON
@@ -459,6 +466,63 @@ event at a time and **reproduces batch scores exactly** (asserted to `1e-5` in
 On the held-out stream Koronis alerts on the campaign's opening attempt — but that alert
 is a declined authorisation with no campaign neighbours yet, weak on its own; the graph is
 what makes the following attempts actionable.
+
+### Does the architecture earn its place?
+
+The mechanism and relation ablations test *data sources*. They say nothing about the two
+design decisions in [`layers.py`](koronis/models/layers.py) — the heterophily gate and the
+learned relation attention — which were, until this experiment, asserted rather than
+measured. `python -m koronis.cli architecture` removes each and refits under the same
+three-split protocol, 5 trials, medians.
+
+The gate's justification is specific enough to make a **conditional** prediction. It exists
+to damp edges joining dissimilar nodes, and camouflage is exactly what creates those: a
+camouflaged attempt draws its amount and email domain from the background, so it links to
+legitimate traffic that looks nothing like the rest of the ring. The gate should therefore
+buy *more* as camouflage rises, and little at camouflage 0.
+
+**It does the opposite.**
+
+| camouflage | full | no gate | uniform relation attention | one layer |
+|---:|---:|---:|---:|---:|
+| 0.0 | 1.0000 | 0.9999 | 0.9999 | 0.9984 |
+| 0.5 | 0.9967 | **0.9989** | 0.9965 | 0.9742 |
+| 1.0 | 0.9892 | **0.9943** | 0.9861 | 0.9487 |
+
+PR-AUC cost of removing each piece (positive = the piece was helping):
+
+| camouflage | heterophily gate | relation attention | second layer |
+|---:|---:|---:|---:|
+| 0.0 | +0.0001 | +0.0001 | +0.0016 |
+| 0.5 | **−0.0022** | +0.0002 | +0.0225 |
+| 1.0 | **−0.0051** | +0.0031 | **+0.0405** |
+
+**The heterophily gate is net-negative, and the effect grows with camouflage — the exact
+inverse of the prediction.** At full camouflage, removing it improves PR-AUC (0.989 →
+0.994), precision (0.942 → 0.958), recall (0.968 → 0.980), and cuts false positives from
+**24 to 17**. Across all 15 seed × camouflage cells it is at least as good without the gate
+on PR-AUC in 12, on false positives in 12, and on recall in 13. The PR-AUC differences are
+small; the false-positive difference is not.
+
+**Relation attention is a wash.** It buys +0.003 PR-AUC at full camouflage and costs two
+extra false positives. That is consistent with the [per-relation ablation](#which-entity-type-carries-the-signal),
+which already found the learned weights disagree with what the relations are actually
+worth.
+
+**Depth is the piece that earns its place**, and it is the one whose benefit shows the
+conditional shape the gate was supposed to have: negligible at camouflage 0, +0.041 PR-AUC
+at camouflage 1, and better on 15 / 15 cells. Coordination that survives camouflage is
+visible two hops out, not one. That is a real finding about the mechanism, and it was not
+the one being tested for.
+
+**What this retracts.** Earlier versions of this README argued the gate was load-bearing
+because fraud rings camouflage into legitimate traffic. The reasoning was plausible and the
+measurement does not support it: on this data the gate costs false positives without buying
+precision. It remains in the model, and is **deliberately not removed** — selecting an
+architecture on test results is the same leakage discipline this project enforces for the
+[net-negative relations](#which-entity-type-carries-the-signal). Doing it properly means
+selecting on the calibration split and re-running the full protocol, which is the recorded
+next step rather than a quiet edit that would improve a headline number.
 
 ### Vantage point: one merchant or the whole gateway
 
@@ -689,6 +753,17 @@ Every defect below was surfaced by running experiments, not by reading code.
    and two concurrent rings stay two clean incidents. That fix moved a headline — action
    regret against the oracle had been ₹0 on 11/11 incidents, and now it is not.
 
+8. **An architectural claim that was never tested, and did not hold.** The mechanism and
+   relation ablations measured which *data sources* mattered; the heterophily gate and the
+   learned relation attention were design decisions in the model itself, argued for in
+   prose and never removed. Ablating them says the gate is **net-negative** — at full
+   camouflage, taking it out improves PR-AUC and cuts false positives from 24 to 17 — and
+   that the harm grows with camouflage, the inverse of the stated rationale. The component
+   that does earn its place is the second relational layer, and its benefit shows exactly
+   the conditional shape the gate was supposed to have. The claim is retracted in place;
+   the gate is not removed, because selecting architecture on test results is the leakage
+   this project refuses elsewhere.
+
 An inference benchmark reporting p50 1.78 ms was also discarded: it was measured while a
 training job ran on the same machine. The idle run is 0.99 ms.
 
@@ -696,7 +771,9 @@ Three lessons, none about neural networks. From (1) and (4): a property you asse
 test gets checked; a property you merely intend gets silently violated the moment an
 unrelated helper changes. From (5): a preprocessing step that seems neutral can decide
 your conclusion, and the dangerous ones are those whose bias points your way. From (6):
-when a result looks too clean, suspect the simulation before congratulating the model.
+when a result looks too clean, suspect the simulation before congratulating the model. And
+from (8): *an argument for a design decision is not evidence for it — the ablation you did
+not run is the claim you cannot make.*
 
 ## Contributing
 

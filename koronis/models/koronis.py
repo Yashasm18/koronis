@@ -39,11 +39,14 @@ def node_features(events: pd.DataFrame, use_approved: bool = True) -> np.ndarray
 
 
 class _Net(nn.Module):
-    def __init__(self, in_dim: int, hidden: int, n_layers: int, n_rel: int):
+    def __init__(self, in_dim: int, hidden: int, n_layers: int, n_rel: int,
+                 use_gate: bool = True, use_rel_attention: bool = True):
         super().__init__()
         dims = [in_dim] + [hidden] * n_layers
         self.layers = nn.ModuleList(
-            [RelationalLayer(dims[i], dims[i + 1], n_rel) for i in range(n_layers)])
+            [RelationalLayer(dims[i], dims[i + 1], n_rel,
+                             use_gate=use_gate, use_rel_attention=use_rel_attention)
+             for i in range(n_layers)])
         self.head = nn.Linear(hidden, 1)
 
     def forward(self, x, edges):
@@ -63,7 +66,8 @@ class KoronisDetector:
 
     def __init__(self, hidden: int = 32, layers: int = 2,
                  window_s: float = 3600.0, seed: int = 0,
-                 use_approved: bool = True, use_edges: bool = True):
+                 use_approved: bool = True, use_edges: bool = True,
+                 use_gate: bool = True, use_rel_attention: bool = True):
         self.hidden, self.n_layers = hidden, layers
         self.window_s, self.seed = window_s, seed
         # Ablation switches. `use_edges=False` strips every graph edge, leaving
@@ -71,6 +75,9 @@ class KoronisDetector:
         # from per-event features rather than coordination. `use_approved=False`
         # zeroes the authorisation outcome, isolating the reverse.
         self.use_approved, self.use_edges = use_approved, use_edges
+        # Architecture switches, so the heterophily gate and the learned
+        # relation attention can be ablated the same way the data sources are.
+        self.use_gate, self.use_rel_attention = use_gate, use_rel_attention
         self.net: _Net | None = None
 
     def _tensors(self, events: pd.DataFrame):
@@ -86,7 +93,9 @@ class KoronisDetector:
         torch.manual_seed(self.seed)
         x, edges = self._tensors(events)
         y = torch.from_numpy(events["label"].to_numpy(dtype=np.float32))
-        self.net = _Net(x.shape[1], self.hidden, self.n_layers, len(RELATIONS))
+        self.net = _Net(x.shape[1], self.hidden, self.n_layers, len(RELATIONS),
+                        use_gate=self.use_gate,
+                        use_rel_attention=self.use_rel_attention)
         opt = torch.optim.Adam(self.net.parameters(), lr=0.01)
         for _ in range(epochs):
             opt.zero_grad()

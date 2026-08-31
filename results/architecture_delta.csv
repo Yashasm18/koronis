@@ -1,0 +1,4 @@
+camouflage,full,no_gate,one_layer,uniform_relation_attention,delta_no_gate,delta_uniform_relation_attention,delta_one_layer
+0.0,1.0,0.9999,0.9984,0.9999,0.0001,0.0001,0.0016
+0.5,0.9967,0.9989,0.9742,0.9965,-0.0022,0.0002,0.0225
+1.0,0.9892,0.9943,0.9487,0.9861,-0.0051,0.0031,0.0405
