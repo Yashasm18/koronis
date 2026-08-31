@@ -198,7 +198,7 @@ td.rng{color:var(--ink-3);font-size:10.5px}
       <div class="metric"><span class="k" id="m-clock-k">Before incident</span>
         <span class="v" id="m-clock">T−04:57</span></div>
       <div class="metric"><span class="k">Events scored</span><span class="v" id="m-seen">0</span></div>
-      <div class="metric"><span class="k">Risk score</span><span class="v" id="m-score">—</span></div>
+      <div class="metric"><span class="k">Peak event risk</span><span class="v" id="m-score">—</span></div>
       <div class="metric"><span class="k">Campaign alerts</span><span class="v" id="m-alerts">0</span>
         <span class="sub2" id="m-alerts-sub"></span></div>
       <div class="metric"><span class="k">Velocity rules</span>
@@ -596,8 +596,7 @@ function updateCard(e){
   el("incbar").innerHTML = campAlerts
     ? "<span>consolidating <b>"+campAlerts+"</b> event alerts into <b>1</b> incident · "+
       PRIME.n_devices+" devices · "+PRIME.n_ips+" IPs · "+PRIME.n_bins+" BIN ranges · "+
-      "incident risk <b>"+PRIME.risk.toFixed(3)+"</b> · remaining exposure ₹"+
-      num(Math.round(PRIME.remaining_exposure_inr))+"</span>"
+      "incident risk <b>"+PRIME.risk.toFixed(3)+"</b></span>"
     : "<span>no incident open</span>";
 
   /* Forecast panel: what the policy believed at decision time, using only the
@@ -668,7 +667,8 @@ function render(){
     ? bgAlerts + " on background traffic" : "none on background";
 
   var last = seen.length ? seen[seen.length-1] : null;
-  el("m-score").textContent = last ? last.score.toFixed(3) : "—";
+  var peakScore = seen.reduce(function(m,e){return e.score>m?e.score:m;}, 0);
+  el("m-score").textContent = seen.length ? peakScore.toFixed(3) : "—";
 
   /* Velocity fires on background traffic in this replay but never on the
      campaign. "Fired" alone would contradict the assessment text, so the two
