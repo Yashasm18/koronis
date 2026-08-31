@@ -400,8 +400,8 @@ event at a time and **reproduces batch scores exactly** (asserted to `1e-5` in
 **Per-event cost is flat in stream length**, by construction:
 
 - **Time** — `O(R · D_max · L · d)` per `push`: `R = 4` relations, `D_max = 32` (the
-  `max_degree` fan-in cap in [`graph/build.py`](koronis/graph/build.py), keeping the most
-  recent neighbours — not reservoir sampling), `L = 2` message-passing layers, `d = 32`
+  `max_degree` fan-in cap in [`graph/build.py`](koronis/graph/build.py), which keeps the
+  most recent neighbours), `L = 2` message-passing layers, `d = 32`
   hidden units. None of these depends on the number of events already seen, so measured
   latency holds at ~0.99 ms p50 regardless of stream length.
 - **Space** — `O(W · λ · d)`: the `window_s = 3600 s` span times the arrival rate `λ`.
