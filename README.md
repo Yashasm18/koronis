@@ -119,6 +119,27 @@ threshold on this campaign.
 
 ## How it works
 
+```mermaid
+%%{init: {"flowchart": {"wrappingWidth": 520, "nodeSpacing": 30, "rankSpacing": 40}}}%%
+flowchart TB
+    IN["<b>Attempt stream</b> — ts · amount · auth outcome · device · IP · BIN · email"]
+    G["<b>Temporal graph</b>, strictly causal — backwards-in-time edges · window 3600 s · fan-in ≤ 32"]
+    MP["<b>Relational message passing</b>, written from scratch — torch.index_add_ · heterophily gate · 2 layers · cost-sensitive loss trained on rupees"]
+    SC{"score ≥ frozen threshold?"}
+    CON["<b>Incident consolidation</b> — union-find on the alerted subgraph · links only via values &lt; 2% of stream"]
+    FC["<b>Incident risk + exposure forecast</b> — separately recalibrated risk · P50/P90 from the first 12 events · conformal band"]
+    POL["<b>Cost-optimal action</b> — monitor · rate-limit · step-up · hold + review"]
+    DRIFT{"PSI > cut-off?"}
+    REV["<b>Analyst review</b> — automation stood down"]
+    OUT["<b>Recommendation + audit dossier</b><br/><i>simulated workflow — nothing blocks a live payment</i>"]
+
+    IN --> G --> MP --> SC
+    SC -->|"alert"| CON --> FC --> POL --> DRIFT
+    SC -.->|"below"| IN
+    DRIFT -->|"no"| OUT
+    DRIFT -->|"yes"| REV --> OUT
+```
+
 1. **A graph, not a list.** Every attempt is a node; two attempts are linked when they
    share a device, IP, BIN range or email domain within a time window. Legitimate traffic
    is sparse and scattered; an attack reuses infrastructure somewhere, because
