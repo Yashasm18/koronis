@@ -15,8 +15,11 @@ from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 
+from collections import defaultdict, deque
+
 from .data.schema import RELATIONS
 from .eval.cost import COST_PER_ATTEMPT_INR
+from .sketch import SlidingCountMin
 
 # ── action assumptions ──────────────────────────────────────────────────────
 # Every number here is an ASSUMPTION about a merchant workflow, not a
@@ -299,3 +302,117 @@ def choose_action(risk: float, remaining_attempts: int) -> tuple[Action, list[tu
              for a in AUTONOMOUS_ACTIONS]
     best = min(costs, key=lambda kv: kv[1])[0]
     return ACTION_BY_NAME[best], costs
+
+
+# ── online consolidation ────────────────────────────────────────────────────
+class StreamingIncidents:
+    """Consolidate alerts into incidents as the stream arrives.
+
+    `build_incidents` is a batch function, and one step of it is not causal:
+    the link-share cap is computed with `value_counts()` over the WHOLE frame,
+    so whether two alerts may link depends on traffic that had not happened
+    yet. The scorer never had that problem - its edges point backwards in time -
+    so the pipeline was causal in its first half and not its second.
+
+    This closes that. Frequencies come from a sliding count-min sketch fed by
+    every event as it passes, so the cap at time t reflects only what had been
+    seen by time t, in memory that does not grow with the number of distinct
+    entity values.
+
+    It will not reproduce the batch grouping exactly, and it should not be
+    expected to: the batch version is using information from the future. Where
+    they differ, this one is the defensible answer. `koronis.cli online`
+    measures how far apart they land.
+    """
+
+    def __init__(self, threshold: float, link_window_s: float = 900.0,
+                 max_link_share: float = MAX_LINK_SHARE,
+                 freq_window_s: float = 3600.0,
+                 sketch_width: int = 4096):
+        self.threshold = float(threshold)
+        self.link_window_s = float(link_window_s)
+        self.max_link_share = float(max_link_share)
+        # ONE SKETCH PER RELATION, for two reasons. The denominator of a share
+        # must be the number of EVENTS, and a single shared sketch counts one
+        # add per relation per event - which silently divided every share by
+        # the relation count and let a domain covering 6% of the stream slip
+        # under a 2% cap and bridge two unrelated rings. Separate sketches also
+        # stop a device id and an email domain colliding in the same counter,
+        # where the collision is pure noise between incomparable namespaces.
+        self.sketch = {rel: SlidingCountMin(window_s=freq_window_s,
+                                            width=sketch_width)
+                       for rel in RELATIONS}
+        # alerted events only, per relation value, inside the link window
+        self._recent: dict[str, dict[str, deque]] = {
+            rel: defaultdict(deque) for rel in RELATIONS
+        }
+        self._parent: list[int] = []
+        self._rows: list[int] = []
+        self._n_seen = 0
+        self._skipped_common = 0
+
+    # -------------------------------------------------------------- union-find
+    def _find(self, a: int) -> int:
+        while self._parent[a] != a:
+            self._parent[a] = self._parent[self._parent[a]]
+            a = self._parent[a]
+        return a
+
+    def _union(self, a: int, b: int) -> None:
+        ra, rb = self._find(a), self._find(b)
+        if ra != rb:
+            self._parent[max(ra, rb)] = min(ra, rb)
+
+    # -------------------------------------------------------------------- api
+    def push(self, event, score: float, row: int | None = None) -> int | None:
+        """Feed one scored event. Returns its incident key, or None if it did
+        not alert. Every event updates the frequency sketch; only alerts link."""
+        if isinstance(event, pd.Series):
+            event = event.to_dict()
+        ts = float(event["ts"])
+        self._n_seen += 1
+        for rel in RELATIONS:                     # frequency sees ALL traffic
+            self.sketch[rel].add(str(event[rel]), ts)
+
+        if score < self.threshold:
+            return None
+
+        me = len(self._parent)
+        self._parent.append(me)
+        self._rows.append(self._n_seen - 1 if row is None else row)
+
+        cutoff = ts - self.link_window_s
+        for rel in RELATIONS:
+            val = str(event[rel])
+            bucket = self._recent[rel][val]
+            while bucket and bucket[0][0] < cutoff:   # expire, bounding memory
+                bucket.popleft()
+            # a value common enough to cover much of the stream is not evidence
+            if self.sketch[rel].share(val, ts) > self.max_link_share:
+                self._skipped_common += 1
+                bucket.append((ts, me))
+                continue
+            for _, other in bucket:
+                self._union(me, other)
+            bucket.append((ts, me))
+        return self._find(me)
+
+    # ------------------------------------------------------------------ output
+    def groups(self) -> dict[int, list[int]]:
+        """Current components, as {incident key: [row indices]}."""
+        out: dict[int, list[int]] = {}
+        for i, row in enumerate(self._rows):
+            out.setdefault(self._find(i), []).append(row)
+        return out
+
+    def stats(self) -> dict:
+        live = sum(len(d) for rel in self._recent.values() for d in rel.values())
+        return {
+            "events_seen": self._n_seen,
+            "alerts": len(self._parent),
+            "incidents": len(self.groups()),
+            "buffered_alert_refs": live,
+            "sketch_kb": round(sum(s.memory_bytes() for s in self.sketch.values())
+                               / 1024, 1),
+            "links_skipped_as_common": self._skipped_common,
+        }

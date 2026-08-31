@@ -3,7 +3,7 @@
 > Detection of distributed card-testing campaigns that per-entity velocity rules cannot see at any threshold.
 
 [![CI](https://github.com/Yashasm18/koronis/actions/workflows/ci.yml/badge.svg)](https://github.com/Yashasm18/koronis/actions/workflows/ci.yml)
-[![tests](https://img.shields.io/badge/tests-109%20passing-2ea44f)](tests/)
+[![tests](https://img.shields.io/badge/tests-117%20passing-2ea44f)](tests/)
 [![python](https://img.shields.io/badge/python-3.14-3776ab)](https://www.python.org/)
 [![license: MIT](https://img.shields.io/badge/license-MIT-yellow)](LICENSE)
 [![graph libs](https://img.shields.io/badge/graph%20libraries-none-8a3ffc)](koronis/models/layers.py)
@@ -33,7 +33,7 @@ detection is possible at all** — stated as arithmetic, then tested.
 
 ```bash
 python -m venv .venv && .venv/bin/pip install -r requirements.txt
-.venv/bin/python -m pytest tests/ -q          # 109 tests, ~1-2 min
+.venv/bin/python -m pytest tests/ -q          # 117 tests, ~1-2 min
 .venv/bin/python -m koronis.cli ablation      # reproduces the headline table below
 ```
 
@@ -153,6 +153,7 @@ is read from there** — nothing is transcribed by hand.
 .venv/bin/python -m koronis.cli mechanism       # which mechanism carries the signal
 .venv/bin/python -m koronis.cli relations       # which entity type carries the signal
 .venv/bin/python -m koronis.cli architecture    # do the gate and the attention earn their place
+.venv/bin/python -m koronis.cli online          # online consolidation vs the batch grouping
 .venv/bin/python -m koronis.cli aperture        # merchant view vs gateway view
 .venv/bin/python -m koronis.cli incidents       # alerts -> incidents -> forecast -> action
 .venv/bin/python -m koronis.cli drift           # traffic-profile transfer stress test
@@ -174,7 +175,8 @@ python site/build.py                            # results/ -> docs/index.html
 | Do the architectural claims hold? | one does not — the heterophily gate is **net-negative**, and it is retracted | [Evaluation](docs/evaluation.md#does-the-architecture-earn-its-place) |
 | Is a gateway's wider view worth anything? | measured: the gap grows with the number of merchants | [Evaluation](docs/evaluation.md#vantage-point-one-merchant-or-the-whole-gateway) |
 | Does it survive a different merchant? | flagged on all three shifted profiles; the guardrail is **experimental** | [Evaluation](docs/evaluation.md#traffic-profile-transfer-stress-test) |
-| Can it run online? | 0.99 ms p50, streaming reproduces batch scores exactly | [Evaluation](docs/evaluation.md#streaming-and-inference-latency) |
+| Can it run online? | 0.99 ms p50; streaming reproduces batch scores exactly | [Evaluation](docs/evaluation.md#streaming-and-inference-latency) |
+| Is the *whole* pipeline causal? | yes — consolidation too, via a sliding count-min sketch in fixed memory | [Evaluation](docs/evaluation.md#making-consolidation-causal) |
 | What broke? | 8 defects, **4 retracted claims** | [Engineering log](docs/engineering-log.md) |
 
 ## Limitations

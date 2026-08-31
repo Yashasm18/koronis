@@ -12,6 +12,7 @@
     python -m koronis.cli relations   # which entity type carries the signal
     python -m koronis.cli aperture    # merchant view vs gateway view
     python -m koronis.cli architecture # do the gate and the attention earn their place
+    python -m koronis.cli online      # online consolidation vs the batch grouping
 """
 import json
 import sys
@@ -36,7 +37,9 @@ from .models.velocity import MultiEntityVelocityDetector, tune_velocity
 from .drift import DriftMonitor
 from .forecast import ExposureForecaster, build_snapshots, evaluate_forecast
 from .profiles import BASE, SHIFTED
-from .incident import ACTION_BY_NAME, IncidentRisk, build_incidents, dossier
+from .incident import (
+    ACTION_BY_NAME, IncidentRisk, StreamingIncidents, build_incidents, dossier,
+)
 from .eval.policy import evaluate_policies, incident_reliability
 from .stream import StreamingKoronis
 
@@ -352,6 +355,78 @@ def mechanism(n_seeds: int = 5) -> pd.DataFrame:
     print(f"\nmechanism ablation, {n_seeds} trials, medians\n")
     print(summary.to_string(index=False))
     return summary
+
+
+def online(n_streams: int = 6) -> pd.DataFrame:
+    """How much does making consolidation causal actually cost?
+
+    `build_incidents` decides whether an entity value is too common to link on
+    by counting it across the whole frame - including events that had not
+    happened when the alert fired. `StreamingIncidents` replaces that with a
+    sliding count-min sketch fed event by event, so the decision at time t uses
+    only what was known at time t, in memory fixed by the sketch rather than by
+    how many distinct entity values the stream contains.
+
+    The two will not agree perfectly, and the batch one is not the ground
+    truth: it is the one using the future. What matters is whether the online
+    grouping still separates campaigns from background, which is measured here
+    by comparing both against the labels.
+    """
+    train = _train_set(0)
+    _, _, kor = _fit_all(train)
+    calib = _calibration_set(2)
+    thr, _ = cost_optimal_threshold(_raw(kor.score_events(calib)),
+                                    calib["label"].to_numpy(),
+                                    COST_PER_ATTEMPT_INR, COST_PER_FALSE_BLOCK_INR)
+
+    rows = []
+    for j in range(n_streams):
+        ev = _sized_stream(900 + j * 11, TEST_K, TEST_CAMO, j)
+        sc = _raw(kor.score_events(ev))
+        labels = ev["label"].to_numpy()
+
+        batch = build_incidents(ev, sc, thr)
+        st = StreamingIncidents(threshold=thr, freq_window_s=WINDOW_S)
+        for i, (_, e) in enumerate(ev.iterrows()):
+            st.push(e, float(sc[i]), row=i)
+        groups = st.groups()
+
+        def purity(members: list[list[int]]) -> tuple[int, float, int]:
+            """Incidents formed, purity of the largest, and campaign recall."""
+            if not members:
+                return 0, float("nan"), 0
+            big = max(members, key=len)
+            pure = float((labels[big] == 1).mean())
+            found = int((labels[big] == 1).sum())
+            return len(members), pure, found
+
+        b_n, b_pure, b_found = purity([i.rows for i in batch])
+        o_n, o_pure, o_found = purity(list(groups.values()))
+        n_camp = int((labels == 1).sum())
+        stats = st.stats()
+        rows.append({
+            "stream": j, "campaign_attempts": n_camp,
+            "batch_incidents": b_n, "online_incidents": o_n,
+            "batch_purity": round(b_pure, 4), "online_purity": round(o_pure, 4),
+            "batch_recall": round(b_found / n_camp, 4),
+            "online_recall": round(o_found / n_camp, 4),
+            "sketch_kb": stats["sketch_kb"],
+            "buffered_alert_refs": stats["buffered_alert_refs"],
+        })
+
+    df = pd.DataFrame(rows)
+    RESULTS.mkdir(exist_ok=True)
+    df.to_csv(RESULTS / "online.csv", index=False)
+    med = df.drop(columns=["stream"]).median().round(4)
+    json.dump({"per_stream": df.to_dict("records"),
+               "median": med.to_dict()},
+              open(RESULTS / "online.json", "w"), separators=(",", ":"))
+
+    print("\nonline consolidation vs batch, per stream\n")
+    print(df.to_string(index=False))
+    print("\nmedians:")
+    print(med.to_string())
+    return df
 
 
 # Architecture ablations. These test the MODEL, not the data sources the
@@ -1048,4 +1123,4 @@ if __name__ == "__main__":
      "seeds": seeds, "replay": replay, "benchmark": benchmark,
      "mechanism": mechanism, "incidents": incidents, "drift": drift,
      "relations": relations, "aperture": aperture,
-     "architecture": architecture}[cmd]()
+     "architecture": architecture, "online": online}[cmd]()

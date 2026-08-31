@@ -209,6 +209,55 @@ On the held-out stream Koronis alerts on the campaign's opening attempt — but 
 is a declined authorisation with no campaign neighbours yet, weak on its own; the graph is
 what makes the following attempts actionable.
 
+### Making consolidation causal
+
+The detector was always strictly online — `StreamingKoronis.push` reproduces batch scores
+exactly. Consolidation was not. `build_incidents` decides whether an entity value is too
+common to link on by counting it with `value_counts()` **across the whole frame**, which
+includes traffic that had not happened when the alert fired. Half the pipeline was causal
+and half was not.
+
+`StreamingIncidents` closes that. Frequencies come from a **sliding count-min sketch** fed
+by every event as it passes, so the cap at time `t` reflects only what was known at `t`.
+Memory is fixed by the sketch dimensions rather than by how many distinct entity values the
+stream contains — which matters, because a card-testing campaign mints a fresh card id per
+attempt, so cardinality is exactly the thing that grows without bound.
+
+**The sketch's error is one-sided, and it points the safe way.** A count-min sketch never
+underestimates. An inflated count makes a value look *more* common, and a value that looks
+common is excluded from linking — so the failure mode is a missed link, fragmenting one
+campaign, rather than a false link merging two rings into a single incident with one action
+for two different attackers. Fragmentation an analyst can recover from; a wrong merge
+silently hides an attack.
+
+`python -m koronis.cli online`, 6 held-out streams, batch / online:
+
+| stream | campaign attempts | incidents | purity of largest | campaign recall |
+|---:|---:|---:|---:|---:|
+| 0 | 150 | 43 / 43 | 1.000 / 1.000 | 0.767 / 0.767 |
+| 1 | 240 | 25 / 25 | 1.000 / 1.000 | 0.912 / 0.912 |
+| 2 | 380 | 14 / 14 | 1.000 / 1.000 | 0.982 / 0.982 |
+| 3 | 520 | 20 / 20 | 1.000 / 1.000 | 0.979 / 0.979 |
+| 4 | 700 | 14 / 14 | 1.000 / 1.000 | 0.987 / 0.987 |
+| 5 | 900 | 16 / 16 | 1.000 / 1.000 | 0.994 / 0.994 |
+
+**Median: 18 incidents either way, purity
+1.000 / 1.000, recall 0.9802 /
+0.9802.** Making the decision causal costs nothing measurable here, in
+**4096 KB** of sketch that does not grow with the stream.
+
+The two are not expected to agree exactly, and where they differ the batch version is not
+the ground truth — it is the one using the future.
+
+**A defect this surfaced.** The first implementation fed all four relations into a single
+shared sketch. The share denominator then counted one add *per relation per event*, so
+every share came out four times too small: a domain covering ~6% of the stream measured
+0.015 against a 0.02 cap, slipped through, and bridged two unrelated rings into one
+incident — defect 7 reappearing through a new mechanism. Each relation now has its own
+sketch, which also stops a device id and an email domain colliding in one counter, where
+the collision is noise between incomparable namespaces. A test asserts two concurrent rings
+stay apart online.
+
 ### Does the architecture earn its place?
 
 The mechanism and relation ablations test *data sources*. They say nothing about the two

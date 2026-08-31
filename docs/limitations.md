@@ -45,12 +45,13 @@ and a reviewer should not have to guess where the seams are.
   submitted. It cannot prevent the attempt it learns from — the value is in the attempts
   that follow. A deployment would score inline after auth, where ~1 ms is affordable, and
   feed the decision layer asynchronously.
-- **The scorer is causal; the consolidator is not yet.** `StreamingKoronis.push` is
-  strictly online and reproduces batch scores exactly. `build_incidents` is not: it
-  computes the 2%-link-share cap with `value_counts()` over the whole frame, which is a
-  batch quantity. Live, that would need a rolling or decayed frequency estimate. Nothing
-  in the reported detection numbers depends on it — it affects consolidation only — but
-  it is a real seam between the two halves.
+- **The whole pipeline is causal, including consolidation.** `StreamingKoronis.push`
+  scores online and reproduces batch scores exactly. `StreamingIncidents` groups online:
+  the link-share cap comes from a sliding count-min sketch fed event by event, so a
+  decision at time `t` uses only what was known at `t`. `build_incidents` remains as the
+  batch reference, and it is the one using the future — see
+  [Evaluation → online consolidation](evaluation.md#making-consolidation-causal) for what
+  the difference costs.
 - **No adaptation loop.** The model is fitted once and frozen, which is what makes the
   hold-out meaningful here and is *not* what a deployment wants. Attacks move. A
   production version needs a retraining cadence, analyst dispositions fed back as labels,
