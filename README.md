@@ -211,11 +211,6 @@ form, and each is measured rather than asserted:
 quantity is genuinely not computable in closed form; everywhere else it adds variance,
 opacity and a training dependency for nothing.
 
-Most of this pipeline is not machine learning, and that is a design decision rather than
-an omission. A learned model earns its place only where the quantity is genuinely not
-computable in closed form; everywhere else it adds variance, opacity and a training
-dependency for nothing.
-
 | Step | What it uses | Why not a model |
 |---|---|---|
 | Detectability boundary | arithmetic, `k ≥ n/τ` | Derived on paper before any run, then tested. A fitted curve would have described the same fact with less certainty and no explanation. |
