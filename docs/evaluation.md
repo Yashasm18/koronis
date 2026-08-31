@@ -1,0 +1,359 @@
+# Evaluation
+
+Every number here is written by an experiment in [`koronis/cli.py`](../koronis/cli.py)
+into `results/`, and read from there by the README and the demo site. Nothing is
+transcribed by hand.
+
+[← back to the README](../README.md)
+
+### Protocol
+
+Three splits, and the threshold never sees the test set:
+
+| split | contents | used for |
+|---|---|---|
+| train | `k ∈ {4, 12, 30}` × `camouflage ∈ {0, 0.5, 1}` | fitting model weights |
+| calibration | same distribution as train, different draw | choosing the operating threshold, then frozen |
+| test | `k = 60`, `camouflage = 1.0`, unseen entities | reported numbers only |
+
+All three derive from one run seed, so repeating the run resamples every split together.
+Training contains only campaigns concentrated enough that a tuned velocity engine still
+catches them (`k ≤ 30`, below the `n/τ = 50` boundary at `n = 400`); the test campaign is
+spread past that
+boundary, fully camouflaged, with unseen entities, so the hold-out is **extrapolation**,
+not interpolation. Scores are used raw — rescaling each split by its own maximum would
+let every split redefine what a score means.
+
+### Decision layer
+
+Event alerts are not tasks for a fraud team — they are one campaign. Koronis consolidates
+them and recommends the intervention with the lowest expected cost, not the one matching
+the highest risk score:
+
+```
+414 event alerts  →  17 incidents  →  1 action recommended
+```
+
+Two concurrent rings stay two incidents: alerts are linked only through entity values
+covering under 2% of the whole stream, so sharing `gmail.com` links nothing. Action
+figures are declared assumptions about a merchant workflow, in
+[`koronis/incident.py`](../koronis/incident.py):
+
+| action | friction (genuine) | harm (false) | stops | analyst |
+|---|---:|---:|---:|---:|
+| monitor | ₹0 | ₹0 | 0% | — |
+| rate-limit | ₹120 | ₹400 | 55% | — |
+| step-up verification | ₹350 | ₹1,800 | 85% | — |
+| hold + review | ₹900 | ₹6,000 | 97% | 12 min |
+
+The chosen action minimises
+`friction + risk × forecast_exposure × (1 − stops) + (1 − risk) × false_harm`.
+
+Each consolidated incident carries a plain-text **audit dossier** —
+`koronis.incident.dossier()`, also printed by `koronis.cli incidents` and shown in the
+console — that reformats the fields already computed (spread and per-entity load,
+consolidation, recalibrated risk, the forecast, and the chosen action versus keeping
+`monitor`). For the held-out campaign incident:
+
+```
+Spread          395 alerted attempts · 60 devices · 60 IPs · 60 BINs
+                per-entity load 6.6/device, 6.6/IP, 6.6/BIN  (binding velocity τ = 8)
+Consolidation   395 event alerts → 1 incident · link window 900 s
+Incident risk   1.000  (recalibrated logistic on calibration incidents)
+Forecast        decided after 12 events · remaining P50 309 [P90 557]
+                exposure P50 ₹22,584 [P90 ₹40,658]
+Recommendation  Hold + analyst review — hold matching attempts, queue for review
+                expected ₹1,685  vs ₹22,557 to keep monitoring
+                oracle action: hold_review  (matches)
+```
+
+### Exposure forecast
+
+Choosing an action needs an estimate of what inaction would cost. Offline that can be read
+off the campaign log; a live system cannot, so a policy built on the true remaining count
+is an oracle upper bound, not a product. `causal_policy` sees only the first 12 events of
+an incident plus a forecast — never the true remaining count or the ground-truth label.
+
+At each incident snapshot a quantile model predicts, from observed signals only, how many
+more alerted events will join the incident. That target is deliberately label-free; the
+incident risk model answers whether the incident matters, and the policy multiplies the
+two:
+
+```
+expected remaining exposure  =  P(genuine) × forecast(remaining attempts) × ₹73
+```
+
+The upper quantile carries a conformal pad fit on a held-out subset of calibration
+incidents; coverage is then evaluated on held-out test incidents. That split is **by
+stream, never by snapshot row**, because snapshots of one incident are nested prefixes and
+splitting by row inflates apparent coverage (91.8% by row vs. the figure below by stream).
+
+| | measured |
+|---|---|
+| P90 interval coverage | 96.6% (target 90%) |
+| Median absolute error, P50 | 104.0 attempts |
+| Mean true remaining | 370.4 attempts |
+| Fit / conformal streams | 4 (campaigns 2, 3, 4, 6) / 4 (campaigns 0, 1, 5, 7) |
+| Snapshots | 84 calibration / 88 held-out |
+
+The interval over-covers: conservative, which is the safe direction for a policy that
+escalates on uncertainty, but not well calibrated with only four conformal streams.
+Campaign length is varied across streams for this evaluation — with a fixed length,
+"remaining" collapses to a constant minus what you have seen and the forecaster scores a
+6.7-attempt median error while learning nothing.
+
+### Policy comparison
+
+Median across 8 independent test streams:
+
+| policy | incidents actioned | false incidents | analyst minutes | merchant cost |
+|---|---:|---:|---:|---:|
+| always allow | 0.0 | 0.0 | 0.0 | ₹60,444 |
+| always hold | 19.5 | 15.5 | 234.0 | ₹121,644 |
+| event-by-event thresholding | 2.0 | 1.0 | 214.8 | ₹19,167 |
+| **causal policy** *(forecast only)* | 2.0 | 1.0 | 12.0 | ₹16,240 |
+| oracle policy *(upper bound)* | 1.5 | 0.0 | 12.0 | ₹8,691 |
+
+Fractional counts are medians across an even number of streams. Not knowing the future is
+measured: on the demo stream the causal policy matches the oracle's action on 14 of 17
+incidents, for a regret of ₹1,560; across the eight streams the median cost gap is ₹7,548.
+Event thresholding reaches the same decision but hands an analyst 214.8 minutes of triage
+instead of 12 — consolidation, not detection, is the difference. When the forecast
+interval is wide relative to its median, the policy escalates to analyst review rather
+than automating.
+
+### Incident-level calibration
+
+An event model with ECE 0.0025 does not give a calibrated incident probability for free —
+events inside an incident are strongly dependent, and that dependence is the signal.
+Incident risk is a separate model, fitted on 153 calibration incidents pooled across 8
+streams and measured on 161 held-out incidents:
+
+| predicted | observed | incidents |
+|---:|---:|---:|
+| 0.103 | 0.137 | 139 |
+| 0.313 | 0.364 | 11 |
+| 0.995 | 1.000 | 11 |
+
+Predicted and observed track closely at the top (0.995 → 1.000) and reasonably at the
+bottom (0.103 → 0.137, slightly under-confident). The single middle bin (0.313 → 0.364,
+11 incidents) is thin; the 0.5–0.7 range holds no incidents at all. Reported rather than
+smoothed over.
+
+### Which entity type carries the signal
+
+Dropping each relation in turn and re-fitting under the same protocol (5 trials, medians;
+`python -m koronis.cli relations`):
+
+| variant | PR-AUC | precision | recall | false positives | PR-AUC change |
+|---|---:|---:|---:|---:|---:|
+| all relations | 0.989 | 0.942 | 0.968 | 24 | — |
+| **no `bin_id`** | 0.942 | 0.951 | **0.813** | 17 | **−0.047** |
+| no `ip_id` | 0.983 | 0.928 | 0.960 | 29 | −0.006 |
+| no `device_id` | 0.994 | 0.963 | 0.978 | 15 | +0.005 |
+| no `email_domain` | 0.993 | 0.956 | 0.983 | 18 | +0.004 |
+
+Shared BIN ranges carry almost all of it — remove that relation and recall collapses from
+0.968 to 0.813. Dropping `device_id` or `email_domain` *improves* PR-AUC and cuts false
+positives: they contribute noise, not evidence. This retires an earlier claim based on the
+model's per-relation attention weights — attention says where a model looked, not what it
+gained. The model is deliberately **not** re-fitted without the two net-negative relations
+here; doing that properly means selecting on the calibration split and re-running the full
+protocol, which is recorded as the correct next step rather than performed to improve a
+headline number.
+
+### Which mechanism carries the signal
+
+Removing each mechanism in turn under the same protocol (5 trials, medians;
+`python -m koronis.cli mechanism`):
+
+| variant | PR-AUC | precision | recall | false positives | first alert |
+|---|---:|---:|---:|---:|---:|
+| **`koronis_full`** | **0.989** | **0.942** | 0.968 | **24** | 0.0 s |
+| `no_edges` — event features only | 0.333 | 0.451 | 0.955 | 465 | 0.0 s |
+| `no_approved` — graph only | 0.726 | 0.746 | 0.648 | 91 | 67.1 s |
+| `no_edges` + `no_approved` | 0.061 | 0.000 | 0.000 | 0 | never |
+
+The authorisation outcome buys earliness (alert at t = 0, but 0.451 precision and 465
+false positives). The graph buys precision (first alert moves to 67.1 s and recall drops
+to 0.648, but false positives fall to 91 and precision rises to 0.746). Together: 24 false
+positives at 0.942 precision, a 19× reduction over event-features-alone; with both removed
+the model never fires, so no third signal source is hiding in the features.
+`tests/test_first_event.py` pins the structural claim that the opening attempt has zero
+campaign-derived links and cannot acquire any.
+
+### Streaming and inference latency
+
+The detector runs as a strictly causal stream: `StreamingKoronis.push(event)` scores one
+event at a time and **reproduces batch scores exactly** (asserted to `1e-5` in
+`tests/test_stream.py`), which falls out of the backwards-in-time edge rule. Measured over
+6,200 events after 200 warm-up, timing only `push`:
+
+| p50 | p95 | p99 | mean | throughput |
+|---:|---:|---:|---:|---:|
+| 0.99 ms | 1.19 ms | 1.26 ms | 0.98 ms | ~1,018 events/sec |
+
+**Per-event cost is flat in stream length**, by construction:
+
+- **Time** — `O(R · D_max · L · d)` per `push`: `R = 4` relations, `D_max = 32` (the
+  `max_degree` fan-in cap in [`graph/build.py`](../koronis/graph/build.py), which keeps the
+  most recent neighbours), `L = 2` message-passing layers, `d = 32`
+  hidden units. None of these depends on the number of events already seen, so measured
+  latency holds at ~0.99 ms p50 regardless of stream length.
+- **Space** — `O(W · λ · d)`: the `window_s = 3600 s` span times the arrival rate `λ`.
+  `bucket.popleft()` evicts events once `t − t_event > W`, so memory tracks active window
+  occupancy, not cumulative volume. `test_stream.py::test_window_bounds_memory` asserts
+  the buffered total stays well below an unbounded stream's.
+
+On the held-out stream Koronis alerts on the campaign's opening attempt — but that alert
+is a declined authorisation with no campaign neighbours yet, weak on its own; the graph is
+what makes the following attempts actionable.
+
+### Does the architecture earn its place?
+
+The mechanism and relation ablations test *data sources*. They say nothing about the two
+design decisions in [`layers.py`](../koronis/models/layers.py) — the heterophily gate and the
+learned relation attention — which were, until this experiment, asserted rather than
+measured. `python -m koronis.cli architecture` removes each and refits under the same
+three-split protocol, 5 trials, medians.
+
+The gate's justification is specific enough to make a **conditional** prediction. It exists
+to damp edges joining dissimilar nodes, and camouflage is exactly what creates those: a
+camouflaged attempt draws its amount and email domain from the background, so it links to
+legitimate traffic that looks nothing like the rest of the ring. The gate should therefore
+buy *more* as camouflage rises, and little at camouflage 0.
+
+**It does the opposite.**
+
+| camouflage | full | no gate | uniform relation attention | one layer |
+|---:|---:|---:|---:|---:|
+| 0.0 | 1.0000 | 0.9999 | 0.9999 | 0.9984 |
+| 0.5 | 0.9967 | **0.9989** | 0.9965 | 0.9742 |
+| 1.0 | 0.9892 | **0.9943** | 0.9861 | 0.9487 |
+
+PR-AUC cost of removing each piece (positive = the piece was helping):
+
+| camouflage | heterophily gate | relation attention | second layer |
+|---:|---:|---:|---:|
+| 0.0 | +0.0001 | +0.0001 | +0.0016 |
+| 0.5 | **−0.0022** | +0.0002 | +0.0225 |
+| 1.0 | **−0.0051** | +0.0031 | **+0.0405** |
+
+**The heterophily gate is net-negative, and the effect grows with camouflage — the exact
+inverse of the prediction.** At full camouflage, removing it improves PR-AUC (0.989 →
+0.994), precision (0.942 → 0.958), recall (0.968 → 0.980), and cuts false positives from
+**24 to 17**. Across all 15 seed × camouflage cells it is at least as good without the gate
+on PR-AUC in 12, on false positives in 12, and on recall in 13. The PR-AUC differences are
+small; the false-positive difference is not.
+
+**Relation attention is a wash.** It buys +0.003 PR-AUC at full camouflage and costs two
+extra false positives. That is consistent with the [per-relation ablation](#which-entity-type-carries-the-signal),
+which already found the learned weights disagree with what the relations are actually
+worth.
+
+**Depth is the piece that earns its place**, and it is the one whose benefit shows the
+conditional shape the gate was supposed to have: negligible at camouflage 0, +0.041 PR-AUC
+at camouflage 1, and better on 15 / 15 cells. Coordination that survives camouflage is
+visible two hops out, not one. That is a real finding about the mechanism, and it was not
+the one being tested for.
+
+**What this retracts.** Earlier versions of this README argued the gate was load-bearing
+because fraud rings camouflage into legitimate traffic. The reasoning was plausible and the
+measurement does not support it: on this data the gate costs false positives without buying
+precision. It remains in the model, and is **deliberately not removed** — selecting an
+architecture on test results is the same leakage discipline this project enforces for the
+[net-negative relations](#which-entity-type-carries-the-signal). Doing it properly means
+selecting on the calibration split and re-running the full protocol, which is the recorded
+next step rather than a quiet edit that would improve a headline number.
+
+### Vantage point: one merchant or the whole gateway
+
+A merchant sees its own checkout. A gateway sees thousands at once, and a
+card-testing ring does not confine itself to one of them — spreading across
+merchants is simply another axis on which per-merchant counters stay quiet.
+
+The prediction was stated in [`eval/aperture.py`](../koronis/eval/aperture.py) before the
+run. A campaign of `n` attempts split evenly over `M` merchants leaves `n/M` attempts in
+any one merchant's view. Co-occurrence goes as attempts squared over spread, so a single
+merchant sees `(n/M)²/k` pairs where the pooled stream sees `n²/k` — about **M times less
+signal**. The merchant-scoped view should therefore decay as `M` grows, while the pooled
+view sees the stream it would have seen anyway.
+
+Same campaign, same frozen model, same frozen threshold; the only variable is how much of
+the stream the detector may see at once (`python -m koronis.cli aperture`):
+
+| merchants | gateway PR-AUC | merchant PR-AUC | gap | largest merchant's share of the campaign |
+|---:|---:|---:|---:|---:|
+| 1 | 0.999 | 0.999 | **0.000** | 100% |
+| 2 | 0.997 | 0.991 | 0.006 | 50% |
+| 4 | 0.994 | 0.980 | 0.014 | 27% |
+| 8 | 0.988 | 0.947 | 0.041 | 14% |
+| 16 | 0.975 | 0.902 | **0.073** | 8% |
+
+**At `M = 1` the two views are the same stream by construction, and they score
+identically** — that is the experiment's control, and a test asserts it. From there the
+gap opens monotonically and roughly in proportion to `M`, as predicted. Recall tells the
+same story: the gateway view holds 0.99 throughout while the merchant view falls to 0.95.
+
+Both views degrade somewhat as `M` grows, because more merchants means more legitimate
+traffic and more chances to false-positive; the merchant view degrades about three times
+faster. **Honest limit: even at `M = 16` the merchant-scoped view still detects this
+campaign.** This measures a widening gap, not a blindness boundary — it says the wider
+aperture is worth something and quantifies how much, not that a merchant alone is
+helpless.
+
+Entity ids are namespaced per merchant. Without that, two merchants would reuse the same
+`d17` and the pooled graph would link strangers — the gateway view would then win on an
+artefact. A test asserts no background entity is shared across merchants.
+
+### Traffic-profile transfer stress test
+
+These are synthetic merchant shapes, not real merchants. Surviving this is evidence the
+detector is not tuned to one traffic profile; it is not evidence of production
+cross-merchant transfer. Everything is fitted on the **base** profile and frozen before
+any shifted traffic is scored. The three shifted profiles are declared in
+[`koronis/profiles.py`](../koronis/profiles.py) before being run:
+
+| profile | what it breaks |
+|---|---|
+| `subscription` | legitimate device and card reuse is high — dense co-occurrence is normal |
+| `marketplace` | entities are diffuse — the graph is sparse and thresholds sit wrong |
+| `flash_sale` | a legitimate burst — high volume and elevated declines, no attack |
+
+Drift is measured by Population Stability Index, with the cut-off set to the 95th
+percentile of PSI between disjoint base samples:
+
+| profile | median PSI | flagged | largest shift | what changed |
+|---|---:|---:|---|---|
+| base | 0.141 | 0 / 3 | reuse_bin | — |
+| `subscription` | 0.584 | 3 / 3 | reuse_device | ✓ device reuse |
+| `marketplace` | 0.924 | 3 / 3 | reuse_ip | ✓ entity diffusion |
+| `flash_sale` | 0.400 | 3 / 3 | log_interarrival | ✓ the burst |
+
+Cut-off 0.162. When PSI exceeds it, the policy stands down from automated intervention to
+analyst review. That is a trade, not a free win:
+
+| profile | false auto-actions avoided | true responses downgraded | analyst minutes added |
+|---|---:|---:|---:|
+| `subscription` | 28 | 9 | 312 |
+| `marketplace` | 2 | 11 | 60 |
+| `flash_sale` | 19 | 9 | 132 |
+
+Across the shifted profiles the guardrail prevents 49 false automated interventions and
+downgrades 29 genuine responses, adding 504 analyst minutes.
+
+**Status: experimental decision support, not a safety control.** The cut-off is fitted on
+16 base streams and the false-flag rate then measured on 12 disjoint base streams comes
+out at 33.3% — too high to run as a default. The reason is a confound, measurable by
+holding the merchant fixed at base and varying only the campaign:
+
+| base traffic, merchant held fixed | false-flag rate |
+|---|---:|
+| campaign matches calibration morphology (`k=30`) | 8.3% |
+| background only, no campaign | 16.7% |
+| campaign of unseen morphology (`k=60`) | 33.3% |
+
+The signal is substantially detecting the attack, not the merchant. That is an
+identification problem, not a tuning bug: live, "different merchant" and "under attack"
+cannot be separated before deciding, and the standard fix — monitoring drift on a much
+slower timescale than detection — is not implemented here.
