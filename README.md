@@ -586,9 +586,17 @@ This is a **semi-synthetic proof of concept**, not production fraud detection. S
 
 Stated plainly, because a result is only as good as its caveats.
 
-- **Background traffic is synthetic.** The loader supports the IEEE-CIS dataset for real
-  entity-reuse structure, but the reported numbers use the bootstrap sampler. Real
-  negatives would make the false-positive costs more trustworthy.
+- **Background traffic is synthetic, and keeping it that way was a measured call.** The
+  loader has an IEEE-CIS path ([`background.py`](koronis/data/background.py)) and the real
+  dataset was pulled and profiled. In a contiguous slice its native density is ~210
+  events/hour (the first 6,000 rows span 28 h); the bootstrap sampler runs at ~1,500
+  events/hour *by design*, because thin background was a corrected defect — at low density
+  an injected campaign becomes the majority of the traffic in its own window and separating
+  it is trivial. Feeding IEEE-CIS in directly reintroduces that regime; compressing its
+  timeline to match the density would discard the real inter-arrival structure that is the
+  only reason to prefer it. `DeviceInfo` also lives in `train_identity.csv` (≈24% row
+  coverage), not `train_transaction.csv`. Real negatives at a realistic density would still
+  make the false-positive costs more trustworthy — it is future work, not a switch to flip.
 - **Campaigns are injected, not observed.** Ground truth exists because it was
   constructed. The mitigation is that the hold-out extrapolates to a spread never seen in
   training, but this is not the same as detecting a campaign in the wild.

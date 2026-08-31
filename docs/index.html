@@ -356,6 +356,12 @@ td.rng{color:var(--ink-3);font-size:10.5px}
         <p>Background traffic and campaigns are generated, not observed. Ground truth exists
         because it was constructed. The hold-out extrapolates to a campaign spread wider than
         anything in training, but that is not the same as detecting a campaign in the wild.</p>
+        <p>The loader has a path for the real IEEE-CIS transaction set. It was obtained and
+        profiled, then deliberately not used: a contiguous slice runs at ~210 events/hour
+        against the ~1,500 the simulator is tuned to, and at that density an injected campaign
+        dominates its own window — the thin-traffic regime a previous fix removed. Matching
+        the density by compressing IEEE's timeline would discard the real arrival structure
+        that is the point of using it.</p>
         <h3>What it will not catch</h3>
         <p>An attacker who uses genuinely fresh infrastructure for every single attempt leaves
         no graph signal. That limit is real — and it is also the point: driving spread that
