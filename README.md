@@ -37,7 +37,13 @@ through a checkout to learn which stolen cards are still live. It reports precis
 recall on a held-out test set, false-positive cost in rupees, and detection latency,
 because damage accrues from the moment a campaign starts.
 
-Its central contribution is not that the model beats its baselines. It is a
+The detector is a **temporal heterogeneous graph network written from scratch** —
+relational message passing with learned per-relation attention and a heterophily gate,
+trained on expected rupee cost rather than cross-entropy, and inductive, so it scores
+entities it has never seen. It is 6,225 parameters; the structure carries the signal, so
+the model does not have to be large.
+
+Its central contribution, though, is not that the model beats its baselines. It is a
 **characterisation of when detection is possible at all**, stated as arithmetic and then
 tested: on a 16-point grid, the measured blindness boundary matched the predicted one
 16 / 16.
@@ -184,7 +190,26 @@ flowchart TB
 
 The third-party surface is `numpy`, `pandas`, `scikit-learn`, `lightgbm`, `torch`.
 
-### Where a learned model is deliberately not used
+### What learns, and what does not
+
+Most of this pipeline is not machine learning, and that is a design decision rather than
+an omission — but the halves are worth stating side by side, because the placement *is*
+the engineering.
+
+**Where learning earns its place.** Each of these estimates a quantity with no closed
+form, and each is measured rather than asserted:
+
+| Component | What it learns | Measured in |
+|---|---|---|
+| Relational message passing ([`layers.py`](koronis/models/layers.py)) | which entity relations carry coordination, via a learned softmax `a_r` over relations | [per-relation ablation](#which-entity-type-carries-the-signal) — BIN carries it; device and email are net-negative |
+| Heterophily gate `g(x_u,x_v) = σ(W·abs(x_u−x_v))` | which edges to damp, so camouflage edges into legitimate traffic dilute less | [mechanism ablation](#which-mechanism-carries-the-signal) — the graph half is what buys precision |
+| Cost-sensitive objective ([`loss.py`](koronis/models/loss.py)) | a decision boundary in rupees, not in cross-entropy | false-positive counts in [held-out detection](#key-results) |
+| Incident risk — L2 logistic, fitted by gradient descent | whether a *consolidated incident* is genuine; event calibration does not transfer, because events inside one are dependent | [incident-level calibration](#incident-level-calibration) |
+| Quantile regression + split conformal ([`forecast.py`](koronis/forecast.py)) | how many attempts remain, and an interval it can defend | [exposure forecast](#exposure-forecast) — 96.6% coverage against a 90% target |
+
+**Where a learned model is deliberately not used.** A model earns its place only where the
+quantity is genuinely not computable in closed form; everywhere else it adds variance,
+opacity and a training dependency for nothing.
 
 Most of this pipeline is not machine learning, and that is a design decision rather than
 an omission. A learned model earns its place only where the quantity is genuinely not
@@ -199,12 +224,8 @@ dependency for nothing.
 | Drift detection | Population Stability Index | A standard payments-risk statistic a reviewer can read and re-derive. A learned detector would raise the same flags while making "why" unanswerable. |
 | Action selection | `argmin` of expected rupee cost | Four actions with declared costs and a risk estimate — the optimum is a closed-form comparison. A learned policy would need a reward signal that does not exist offline. |
 
-Two places do need learning, because the quantity has no closed form: **relational message
-passing with a heterophily gate**, which has to discover which relations carry coordination
-against camouflage, and the **conformal quantile forecaster**, which estimates remaining
-exposure under uncertainty. Both are measured in [Evaluation](#evaluation), and the
-per-relation ablation shows two of the four relations are net-negative — that is the same
-discipline applied to the learned half.
+The per-relation ablation applies the same discipline to the learned half: two of the four
+relations turn out to be net-negative, and that is reported rather than quietly dropped.
 
 ## Installation
 
