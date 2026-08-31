@@ -358,10 +358,19 @@ event at a time and **reproduces batch scores exactly** (asserted to `1e-5` in
 |---:|---:|---:|---:|---:|
 | 0.99 ms | 1.19 ms | 1.26 ms | 0.98 ms | ~1,018 events/sec |
 
-Entity buckets expire on the window, so memory is bounded by window occupancy rather than
-stream length. On the held-out stream Koronis alerts on the campaign's opening attempt —
-but that alert is a declined authorisation with no campaign neighbours yet, weak on its
-own; the graph is what makes the following attempts actionable.
+**Why the per-event cost is flat in stream length.** Each `push` bisects into per-entity
+buckets for the neighbours inside the `window_s = 3600 s` window, keeps at most
+`max_degree = 32` most-recent per relation (4 relations), and runs `layers = 2`
+message-passing steps — so the work is `O(relations · max_degree · layers)` regardless of
+how many events came before. Memory is `O(active entities in window × bucket size)`:
+`bucket.popleft()` expires events as the window advances, and
+`test_stream.py::test_window_bounds_memory` asserts the buffered total stays well below an
+unbounded stream's. The `max_degree` cap and the window bound are the two constants;
+neither is a function of total volume.
+
+On the held-out stream Koronis alerts on the campaign's opening attempt — but that alert
+is a declined authorisation with no campaign neighbours yet, weak on its own; the graph is
+what makes the following attempts actionable.
 
 ### Traffic-profile transfer stress test
 
