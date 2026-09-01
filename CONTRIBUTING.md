@@ -10,58 +10,61 @@ python -m venv .venv
 .venv/bin/pip install -r requirements.txt -r requirements-dev.txt
 .venv/bin/python -m playwright install chromium     # for the site-render tests
 .venv/bin/python site/build.py                      # the site tests need docs/index.html
-.venv/bin/python -m pytest tests/ -q                # 184 tests, ~1–2 min
+.venv/bin/python -m pytest tests/ -q                # 220 tests, ~2 min
 ```
 
-`requirements-dev.txt` is test-only. The suite runs without it — the tests that
-drive the demo page skip — but then fewer tests are collected than CI collects,
-and the test-count badge check will say so.
+`requirements-dev.txt` is test-only. The suite runs without it — the eight tests that
+drive the demo page skip — but then fewer tests are collected than CI collects, and the
+test-count badge check will say so.
 
 Python 3.14 is the tested version (see [`.github/workflows/ci.yml`](.github/workflows/ci.yml)).
 
 ## How the project stays honest
 
 Every headline claim is backed by a **test that asserts the property**, not code that
-merely intends it. Several past defects (entity-ID leakage, the frontier disagreeing with
-itself) were caught only because a test checked the invariant directly. If you add or
-change a claim, add the assertion that would fail if it broke.
+merely intends it. This is the whole convention, and most of it was learned by getting it
+wrong: [`docs/engineering-log.md`](docs/engineering-log.md) records sixteen defects and
+what each one cost. If you add or change a claim, add the assertion that would fail if it
+broke — and check that it *does* fail, by breaking it on purpose.
 
-**All numbers in the README and on the demo site come from `results/`.** The experiments
-write those files:
+That last step is not optional. Several guards here were written, verified green, and only
+then discovered to be checking nothing.
+
+Four families of check exist, and they fail in different ways:
+
+| Guard | Catches |
+|---|---|
+| Defence-only (`test_defence_only.py`) | the package acquiring a way to reach outside its own process |
+| Model invariants (`test_pseudonymisation_is_lossless.py`, `test_stream.py`) | the model acquiring a dependence it should not have — identifier values, a node's future |
+| Figures (`test_docs_match_results.py`, `test_doc_tables_match_results.py`) | published numbers drifting from `results/` |
+| The demo page (`test_site_renders.py`) | the page throwing, or rendering something the numbers do not say |
+| The recording (`test_demo_recording_is_current.py`) | the README's GIF showing a console that no longer exists |
+
+**A note on direction.** `test_docs_match_results.py` checks that each computed figure
+*appears* in the docs — that can only detect a **missing** number. A superseded number is
+not missing, it is extra. Three whole tables rotted in that blind spot. If you add a
+figure check, ask which of the two directions it covers.
+
+## Regenerating everything
+
+**All numbers in the README and on the demo site come from `results/`.** Nothing is
+transcribed by hand. The experiments that write those files are listed under
+[Reproducing everything](README.md#reproducing-everything) — that list is the single copy,
+deliberately not duplicated here.
+
+The demo site and the README's screen recording are generated too, never hand-edited:
 
 ```bash
-.venv/bin/python -m koronis.cli ablation      # headline detector comparison
-.venv/bin/python -m koronis.cli seeds         # 10-trial intervals
-.venv/bin/python -m koronis.cli mechanism     # mechanism ablation
-.venv/bin/python -m koronis.cli relations     # per-relation ablation
-.venv/bin/python -m koronis.cli incidents     # incidents -> forecast -> policy
-.venv/bin/python -m koronis.cli drift         # traffic-profile stress test
-.venv/bin/python -m koronis.cli frontier      # predicted vs measured boundary
-.venv/bin/python -m koronis.cli latency
-.venv/bin/python -m koronis.cli replay
-.venv/bin/python -m koronis.cli benchmark
+python site/build.py                              # results/ -> docs/index.html
+python site/build.py && python site/record_demo.py   # + the GIF/MP4/poster; needs ffmpeg
 ```
 
-The demo site is regenerated, never hand-edited:
+`record_demo.py` refreshes `docs/assets/koronis-demo.stamp` as its last step. Do not
+hand-edit the stamp — updating it without remaking the recording defeats the only check on
+the image.
 
-```bash
-python site/build.py       # results/  ->  docs/index.html
-```
-
-So is the screen recording in the README. It shows live figures, so a change to
-`results/` or to the demo page's controls makes it stale — and being a binary, nothing
-reads it. `tests/test_demo_recording_is_current.py` compares a committed stamp against
-both, and fails when either moves:
-
-```bash
-python site/build.py && python site/record_demo.py    # needs ffmpeg on PATH
-```
-
-That refreshes the stamp as its last step. Do not hand-edit the stamp — updating it
-without remaking the recording defeats the only check on the image.
-
-If a change moves a metric, re-run the affected experiment(s), rebuild the site, and
-update the matching numbers in the README **in the same PR**.
+If a change moves a metric, re-run the affected experiment(s), rebuild the site, and update
+the matching numbers **in the same PR**. If it changes the demo page at all, re-record.
 
 ## Design constraints
 
@@ -71,17 +74,27 @@ update the matching numbers in the README **in the same PR**.
 - **Defence-only.** No network capability, no live payment integration, no real card or
   BIN data. The `grep` check in [`SECURITY.md`](SECURITY.md) must stay clean.
 - **Backwards-in-time edges only.** A node may aggregate from its own past, never its
-  future — this is what makes the streaming and latency numbers meaningful.
+  future — this is what makes the streaming and latency numbers meaningful, and streaming
+  parity is asserted at one, two, three and four layers.
+- **Identifiers are compared, never interpreted.** `device_id`, `ip_id` and `bin_id` are
+  used only for equality, which is what lets an integrator send tokens instead of raw
+  values and get bit-identical scores. Do not add an ordering, a hash bucket, or a learned
+  embedding on an identifier. `email_domain` is the one documented exception; both the rule
+  and the exception are asserted.
+- **No per-entity embedding tables.** The model must stay inductive: production entities
+  are ones it has never seen.
 
 ## Style
 
 - Match the surrounding code: naming, comment density, and idiom.
+- Comments explain *why*, and especially why something is not the obvious thing. A comment
+  that restates the code is noise.
 - Keep functions small and single-purpose; large files usually mean tangled
   responsibilities.
 - Run `pytest` before opening a PR. CI runs the same suite on Python 3.14.
 
 ## Commits and PRs
 
-- Small, focused commits with a clear subject line.
-- Describe what broke and how you verified the fix — the same standard the README's
-  "Engineering notes" section holds itself to.
+- Small, focused commits with a clear subject line saying what broke, not what was touched.
+- Describe how you verified the fix — the same standard the engineering log holds itself
+  to. "Verified by reverting; it reports X" is the most useful sentence in a bug-fix PR.
