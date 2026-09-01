@@ -117,7 +117,7 @@ Median across 8 independent test streams:
 | oracle policy *(upper bound)* | 1.0 | 0.0 | 12.0 | ₹3,145 |
 
 Fractional counts are medians across an even number of streams. Event thresholding reaches
-the same decision but hands an analyst 213 minutes of triage instead of 12 —
+the same decision but hands an analyst 211 minutes of triage instead of 12 —
 consolidation, not detection, is the difference. When the forecast interval is wide
 relative to its median, the policy escalates to analyst review rather than automating.
 
@@ -144,10 +144,12 @@ streams and measured on 93 held-out incidents:
 | 0.660 | 1.000 | 1 |
 | 0.999 | 1.000 | 9 |
 
-Separation is clean at the top (0.994 → 1.000 on 11 incidents). The bottom bin is
-under-confident (0.095 → 0.180 on 128). The middle is barely determined at all — three
-bins holding 1, 4 and 1 incidents — which is the honest state of a model fitted on 129
-incidents, and is reported rather than smoothed over.
+Separation is clean at the top (0.999 → 1.000 on 9 incidents). The bottom bin is
+under-confident by a factor of three (0.077 → 0.234), and it holds 77 of the 93 held-out
+incidents, so that is the bin that matters: an incident this model calls quiet is roughly
+three times more likely to be real than it says. The middle is barely determined at all —
+two bins holding 6 and 1 incidents, and one holding none — which is the honest state of a
+model fitted on 70 incidents, and is reported rather than smoothed over.
 
 ### Which entity type carries the signal
 
@@ -156,15 +158,18 @@ Dropping each relation in turn and re-fitting under the same protocol (5 trials,
 
 | variant | PR-AUC | precision | recall | false positives | PR-AUC change |
 |---|---:|---:|---:|---:|---:|
-| all relations | 0.989 | 0.942 | 0.968 | 24 | — |
-| no `device_id` | 0.994 | 0.963 | 0.978 | 15 | +0.0049 |
-| no `ip_id` | 0.983 | 0.927 | 0.960 | 29 | -0.0059 |
-| no `bin_id` | 0.942 | 0.951 | 0.812 | 17 | -0.0468 |
-| no `email_domain` | 0.993 | 0.956 | 0.983 | 18 | +0.0042 |
+| all relations | 0.995 | 0.971 | 0.988 | 12 | — |
+| no `device_id` | 0.996 | 0.966 | 0.993 | 14 | +0.0012 |
+| no `ip_id` | 0.995 | 0.964 | 0.980 | 15 | +0.0004 |
+| no `bin_id` | 0.967 | 0.961 | 0.868 | 14 | -0.0281 |
+| no `email_domain` | 0.998 | 0.977 | 0.998 | 9 | +0.0033 |
 
 Shared BIN ranges carry almost all of it — remove that relation and recall collapses from
-0.968 to 0.813. Dropping `device_id` or `email_domain` *improves* PR-AUC and cuts false
-positives: they contribute noise, not evidence. This retires an earlier claim based on the
+0.988 to 0.868, the only change here large enough to matter. Removing `email_domain`
+*improves* PR-AUC and cuts false positives from 12 to 9: it contributes noise, not
+evidence, and it is not among the relations the detector consumes. Removing `device_id` or
+`ip_id` moves PR-AUC by +0.0012 and +0.0004 — within trial-to-trial noise — while raising
+false positives slightly, so neither is carrying weight the BIN relation is not. This retires an earlier claim based on the
 model's per-relation attention weights — attention says where a model looked, not what it
 gained.
 
@@ -405,16 +410,16 @@ silently hides an attack.
 
 | stream | campaign attempts | incidents | purity of largest | campaign recall |
 |---:|---:|---:|---:|---:|
-| 0 | 150 | 43 / 43 | 1.000 / 1.000 | 0.767 / 0.767 |
-| 1 | 240 | 25 / 25 | 1.000 / 1.000 | 0.912 / 0.912 |
-| 2 | 380 | 14 / 14 | 1.000 / 1.000 | 0.982 / 0.982 |
-| 3 | 520 | 20 / 20 | 1.000 / 1.000 | 0.979 / 0.979 |
-| 4 | 700 | 14 / 14 | 1.000 / 1.000 | 0.987 / 0.987 |
-| 5 | 900 | 16 / 16 | 1.000 / 1.000 | 0.994 / 0.994 |
+| 0 | 150 | 41 / 41 | 1.000 / 1.000 | 0.700 / 0.700 |
+| 1 | 240 | 10 / 10 | 1.000 / 1.000 | 0.925 / 0.925 |
+| 2 | 380 | 7 / 7 | 1.000 / 1.000 | 0.987 / 0.987 |
+| 3 | 520 | 10 / 10 | 1.000 / 1.000 | 0.983 / 0.983 |
+| 4 | 700 | 7 / 7 | 1.000 / 1.000 | 0.993 / 0.993 |
+| 5 | 900 | 5 / 5 | 1.000 / 1.000 | 0.994 / 0.994 |
 
-**Median: 18 incidents either way, purity
-1.000 / 1.000, recall 0.9802 /
-0.9802.** Making the decision causal costs nothing measurable here, in
+**Median: 8.5 incidents either way, purity
+1.000 / 1.000, recall 0.9848 /
+0.9848.** Making the decision causal costs nothing measurable here, in
 **4 MB** of sketch that does not grow with the stream.
 
 The two are not expected to agree exactly, and where they differ the batch version is not
@@ -526,16 +531,18 @@ the stream the detector may see at once (`python -m koronis.cli aperture`):
 
 | merchants | gateway PR-AUC | merchant PR-AUC | gap | largest merchant's share of the campaign |
 |---:|---:|---:|---:|---:|
-| 1 | 0.999 | 0.999 | **0.000** | 100% |
-| 2 | 0.997 | 0.991 | 0.006 | 50% |
-| 4 | 0.994 | 0.980 | 0.014 | 27% |
-| 8 | 0.988 | 0.947 | 0.041 | 14% |
-| 16 | 0.975 | 0.902 | **0.073** | 8% |
+| 1 | 1.000 | 1.000 | **0.000** | 100% |
+| 2 | 1.000 | 0.999 | 0.001 | 50% |
+| 4 | 0.998 | 0.993 | 0.006 | 27% |
+| 8 | 0.996 | 0.971 | 0.025 | 14% |
+| 16 | 0.993 | 0.924 | **0.070** | 8% |
 
 **At `M = 1` the two views are the same stream by construction, and they score
 identically** — that is the experiment's control, and a test asserts it. From there the
-gap opens monotonically and roughly in proportion to `M`, as predicted. Recall tells the
-same story: the gateway view holds 0.99 throughout while the merchant view falls to 0.95.
+gap opens monotonically, as predicted — and faster than linearly in `M`, widening from
+0.001 at two merchants to 0.070 at sixteen. Recall tells the same story: the gateway view
+stays between 0.985 and 0.995 across the sweep while the merchant view falls from 0.995 to
+0.938.
 
 Both views degrade somewhat as `M` grows, because more merchants means more legitimate
 traffic and more chances to false-positive; the merchant view degrades about three times

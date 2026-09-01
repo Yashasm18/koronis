@@ -154,6 +154,39 @@ Every defect below was surfaced by running experiments, not by reading code.
    in an ignored scratch directory, uses the page's own 4× control, and waits for the
    stream to drain instead of sleeping for a guessed duration.
 
+15. **Three published tables were reporting a run that had been superseded.** The demo
+   site and the documents disagreed, and the site was right: `site/build.py` reads
+   `results/` at build time and cannot go stale, while the tables in
+   [`evaluation.md`](evaluation.md) are written by hand. The per-relation ablation was
+   wrong in every cell — it reported PR-AUC 0.989 for the full model against an actual
+   0.995, and 24 false positives against 12. The aperture sweep reported a gap of 0.073 at
+   sixteen merchants against an actual 0.070. The online/batch table reported 43 incidents
+   on stream 0 against 41. Prose carried the same rot: the relations paragraph claimed
+   recall fell "from 0.968 to 0.813" when the figures were 0.988 to 0.868, and claimed
+   dropping `device_id` cut false positives when it raises them from 12 to 14; the policy
+   paragraph said 213 analyst minutes beside a table saying 211; the incident-reliability
+   paragraph cited four figures from an older fit directly beneath the table that
+   contradicted them.
+
+   The doc guard was green throughout, and the reason is structural. It asserted, for each
+   figure computed from an artifact, that the figure *appears somewhere in the docs* —
+   results → docs. That direction can only detect a number that is **missing**. A
+   superseded number is not missing; it is extra, and nothing was looking for extras.
+   `test_doc_tables_match_results.py` now renders each of these tables from its artifact
+   and requires it verbatim, so a re-run that moves any cell fails and the message names
+   the row.
+
+   The demo console had a related defect of its own: it reported "*N* linked alerts
+   ... connected by 6 device, 5 IP and 6 BIN relations", stapling the window's alert count
+   to one event's neighbour counts. Those counts sum to that event's `linked` field — 17,
+   not 395 — which is checkable on all 6,400 replay events and holds on every one.
+
+   The stamp added with defect 14 would not have caught the corrected sentence. It hashed
+   the page's *control surface* on the argument that a copy edit should not force a
+   re-record; but the sentence is built in JavaScript, no control changed, and the
+   recording would have kept displaying a retracted claim. It hashes the whole built page
+   now. The earlier scoping was an argument, and the ablation for it was never run.
+
 An inference benchmark reporting p50 1.78 ms was also discarded: it was measured while a
 training job ran on the same machine. The idle run is 0.91 ms.
 

@@ -9,11 +9,10 @@ the picture at the top of it was checked by nobody.
 
 The recording is a binary, so this cannot compare it to results directly. It
 compares a stamp committed beside it against the two things a viewer can read
-off the frames: the numbers, and the controls that are visible to click.
+off the frames: the numbers it reports, and the page that displays them.
 """
 import hashlib
 import pathlib
-import re
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 STAMP = ROOT / "docs" / "assets" / "koronis-demo.stamp"
@@ -36,20 +35,26 @@ def _results_digest() -> str:
     return h.hexdigest()
 
 
-def _controls_digest() -> str:
-    """Hash the page's control surface: ids and the tab/speed switches.
+def _page_digest() -> str:
+    """Hash the whole built page.
 
-    Deliberately not the whole page. Copy edits and styling should not force a
-    5 MB re-record; a control appearing or disappearing should, because the
-    recording then shows a console the reader cannot find on the live site.
+    The first version of this check hashed only the page's control surface - its
+    ids and the tab/speed switches - on the reasoning that a copy edit should not
+    force a 5 MB re-record. Defect 15 showed that reasoning to be wrong. The
+    incident panel had been asserting that 395 alerts were "connected by 6 device,
+    5 IP and 6 BIN relations", when those counts describe one event's neighbours
+    and sum to 17. Correcting the sentence left the recording displaying a claim
+    the project had retracted, and a control-surface hash cannot see that: the
+    sentence is built in JavaScript and no control changed.
+
+    Anything a viewer can read is worth covering, so this covers all of it. The
+    cost is that a typo fix requires re-recording, which is one scripted command.
     """
-    html = INDEX.read_text()
-    tokens = sorted(set(re.findall(r'(?:id|data-tab|data-speed)="([^"]+)"', html)))
-    return hashlib.sha256("\n".join(tokens).encode()).hexdigest()
+    return hashlib.sha256(INDEX.read_bytes()).hexdigest()
 
 
 def _current() -> dict[str, str]:
-    return {"results": _results_digest(), "controls": _controls_digest()}
+    return {"results": _results_digest(), "page": _page_digest()}
 
 
 def _read_stamp() -> dict[str, str]:
@@ -72,10 +77,10 @@ def test_the_recording_shows_the_results_the_repo_reports():
             "figures in the GIF at the top of the README no longer match the "
             f"figures in its text. {REMAKE}"
         )
-    if stamp.get("controls") != now["controls"]:
+    if stamp.get("page") != now["page"]:
         raise AssertionError(
-            "the demo page's controls have changed since the recording was "
-            "made, so the GIF shows a console that differs from the live one. "
+            "the demo page has changed since the recording was made, so the GIF "
+            "shows a console that differs from the live one. "
             f"{REMAKE}"
         )
 
@@ -95,5 +100,5 @@ def write_stamp() -> None:
         "# Do not hand-edit: refreshing it without remaking the recording is\n"
         "# exactly the check being defeated.\n"
         f"results {now['results']}\n"
-        f"controls {now['controls']}\n"
+        f"page {now['page']}\n"
     )

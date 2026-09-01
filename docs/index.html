@@ -338,8 +338,9 @@ td.rng{color:var(--ink-3);font-size:10.5px}
         <p>A well-calibrated <i>event</i> model does not give a calibrated <i>incident</i>
         probability for free — the events inside an incident are strongly dependent, which is
         the entire signal. Incident risk is a separate model, fitted on calibration incidents
-        and measured here. Separation is clean at both ends; <b>the middle bins hold few
-        incidents and are weakly determined</b>.</p>
+        and measured here. The top bin separates cleanly (0.999 → 1.000). <b>The bottom bin
+        is under-confident</b> — 0.077 predicted against 0.234 observed, on 77 of the 93
+        held-out incidents — and the middle bins hold too few incidents to determine.</p>
       </div>
     </div>
     <div class="panel">
@@ -943,8 +944,13 @@ function updateCard(e){
       "ranges — "+e.linked+" prior events on this one alone, "+e.ring+" alerts inside the window. "+
       "Coordination is what separates this from ordinary declines.";
   } else {
-    why = "<b>"+e.ring+" linked alerts</b> inside the window, connected by "+ev.device_id+
-      " device, "+ev.ip_id+" IP and "+ev.bin_id+" BIN relations. A declined authorisation is "+
+    /* e.ring counts alerts in the window; ev.* count THIS event's neighbours and
+       sum to e.linked. An earlier version read "<ring> linked alerts connected by
+       <device> device ... relations", which attributed one event's link counts to
+       the whole window - the two differ by more than an order of magnitude. */
+    why = "<b>"+e.ring+" alerts</b> inside the window. This attempt alone links to <b>"+
+      e.linked+"</b> earlier events — "+ev.device_id+" through a shared device, "+ev.ip_id+
+      " through an IP and "+ev.bin_id+" through a BIN range. A declined authorisation is "+
       "weak early evidence; <b>overlap across linked attempts</b> is what makes the response "+
       "actionable. Velocity rules raise no campaign alert — every entity stays under "+
       "threshold.";
