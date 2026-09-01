@@ -145,6 +145,63 @@ Its relation set and its gate were **selected on calibration**, not chosen by ta
 
 → **[Full architecture, and which parts are learned](docs/architecture.md)**
 
+## Where this would run
+
+**This section is a design proposal, not something that has been built.** The numbers in it
+are measured; the placement is reasoned. Nothing here talks to a payment system, and no
+part of this repository can.
+
+Koronis is **post-authorisation by construction** — it reads the authorisation outcome,
+which exists only after an attempt is submitted. It therefore cannot block the attempt it
+learns from, and the value is in the attempts that follow. That single fact decides where
+it belongs: **the model never sits on the checkout's critical path.**
+
+```mermaid
+%%{init: {"flowchart": {"nodeSpacing": 26, "rankSpacing": 34}}}%%
+flowchart TB
+    CO["Checkout"] --> PRE{"pre-auth risk check<br/>key-value lookup by device · IP · BIN<br/><b>no model call</b>"}
+    PRE --> ACQ["Acquirer / card network"]
+    ACQ -->|"authorisation outcome"| BUS["Event stream, partitioned by BIN"]
+    BUS --> SC["<b>Koronis scorers</b> — 8 workers<br/>0.83 ms per event · 1 h window<br/>shared device / IP replicated across shards"]
+    SC --> CON["<b>Consolidation</b> — online union-find<br/>count-min sketch, 4 MB fixed"]
+    CON --> POL["<b>Incident risk → exposure forecast → cost-optimal action</b>"]
+    POL --> KV["Decision store<br/>entity → action, expires with the window"]
+    POL --> AQ["Analyst queue<br/>+ audit dossier"]
+    KV -.->|"read by the next attempt"| PRE
+```
+
+Scoring consumes the authorisation stream asynchronously. Decisions are written to a
+key-value store keyed by entity, and the pre-auth path performs a **lookup** — the same
+shape as the velocity counters most gateways already run there.
+
+**Sizing, from measured constants.** At 0.83 ms per event and 1,195 events/sec per worker,
+eight workers cover ~9,600 events/sec. Memory is bounded by the window rather than by
+traffic history, and the frequency state is fixed at 4 MB regardless of how many distinct
+entity values pass through — which matters, because a card-testing campaign mints a fresh
+card id per attempt.
+
+**Partitioning is a modelling decision, and it was measured, not assumed.** Splitting a
+graph deletes edges. Routing by BIN preserves the relation that
+[carries the signal](docs/evaluation.md#which-entity-type-carries-the-signal); replicating
+the events whose device or IP actually recurs
+[restores recall from 0.59 to 1.00 at eight shards](docs/evaluation.md#recovering-the-edges-a-partition-deletes),
+for 2.4× the scoring work. Reported honestly: **every partitioned configuration is worse
+than not partitioning at all**, so more workers is a cost to justify, not a free lever.
+
+**What each recommendation maps to.** `monitor` is no action. `rate_limit` throttles the
+linked entities. `step_up` is additional verification scoped to the implicated subgraph
+rather than to all traffic. `hold_review` queues for a person, with the
+[audit dossier](docs/evaluation.md#decision-layer) as the evidence. This is a signal
+source for an existing risk stack, not a replacement for one — it covers a single class of
+loss that per-transaction scoring provably cannot see above a spread.
+
+**What would have to be true first**, stated plainly: the model is fitted once and frozen,
+which is what makes the hold-out honest and is not what a deployment wants; the data is
+semi-synthetic, and BIN — the relation carrying most of the signal — is the one whose real
+behaviour differs most from the simulation; and any deployment would begin in shadow mode,
+scoring and logging without acting, until its false-positive rate had been measured on real
+traffic. [Full limitations.](docs/limitations.md)
+
 ## Reproducing everything
 
 Every experiment writes to `results/`, and **every number in this repo and on the demo site
