@@ -170,10 +170,15 @@ Shared BIN ranges carry almost all of it — remove that relation and recall col
 0.968 to 0.813. Dropping `device_id` or `email_domain` *improves* PR-AUC and cuts false
 positives: they contribute noise, not evidence. This retires an earlier claim based on the
 model's per-relation attention weights — attention says where a model looked, not what it
-gained. The model is deliberately **not** re-fitted without the two net-negative relations
-here; doing that properly means selecting on the calibration split and re-running the full
-protocol, which is recorded as the correct next step rather than performed to improve a
-headline number.
+gained.
+
+Acting on that finding here would have meant selecting an architecture on test results,
+which is the leakage this project refuses. It was therefore reported and left alone until
+it could be done properly, and then it was:
+[calibration-based selection](#closing-the-loop-selecting-an-architecture-without-touching-test)
+removed `email_domain` and the gate, and that leaner model is now the default. This table
+keeps all four relations and the gate on, so it measures the question it was built to
+measure rather than the model that shipped.
 
 ### Which mechanism carries the signal
 

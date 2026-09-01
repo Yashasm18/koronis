@@ -32,10 +32,16 @@ Its contribution is not that it beats its baselines. It is a **characterisation 
 detection is possible at all** — stated as arithmetic, then tested.
 
 ```bash
-python -m venv .venv && .venv/bin/pip install -r requirements.txt
-.venv/bin/python -m pytest tests/ -q          # 163 tests, ~1-2 min
-.venv/bin/python -m koronis.cli ablation      # reproduces the headline table below
+python -m venv .venv
+.venv/bin/pip install -r requirements.txt -r requirements-dev.txt
+.venv/bin/python -m playwright install chromium   # the site tests drive the demo page
+.venv/bin/python site/build.py                    # they need docs/index.html to exist
+.venv/bin/python -m pytest tests/ -q              # 163 tests, ~1-2 min
+.venv/bin/python -m koronis.cli ablation          # reproduces the headline table below
 ```
+
+The suite runs without `requirements-dev.txt` — the four tests that drive the demo page
+skip — but then 157 are collected rather than 163, and the test-count check says so.
 
 ## Key results
 
