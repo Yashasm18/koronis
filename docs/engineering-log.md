@@ -88,6 +88,15 @@ Every defect below was surfaced by running experiments, not by reading code.
    to depart from. A null result that arrives as a clean zero is worth more suspicion than
    a noisy one.
 
+10. **The demo site rendered perfectly and did nothing.** Renaming an architecture
+   variant in `results/` left the site's table code looking up a key that no longer
+   existed. Reading `.pr` off `undefined` threw, which killed the entire page script — so
+   the console loaded, drew every static panel, and then silently refused to replay.
+   Every doc figure was correct, every other test passed, and the live demo was broken.
+   The site is generated from the same artifacts as the prose but can fail in ways prose
+   cannot, so `tests/test_site_renders.py` now loads the built page, asserts no script
+   error, asserts every table has rows, and asserts the replay actually advances.
+
 An inference benchmark reporting p50 1.78 ms was also discarded: it was measured while a
 training job ran on the same machine. The idle run is 0.99 ms.
 
