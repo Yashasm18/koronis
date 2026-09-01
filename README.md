@@ -3,7 +3,7 @@
 > Detection of distributed card-testing campaigns that per-entity velocity rules cannot see at any threshold.
 
 [![CI](https://github.com/Yashasm18/koronis/actions/workflows/ci.yml/badge.svg)](https://github.com/Yashasm18/koronis/actions/workflows/ci.yml)
-[![tests](https://img.shields.io/badge/tests-167%20passing-2ea44f)](tests/)
+[![tests](https://img.shields.io/badge/tests-174%20passing-2ea44f)](tests/)
 [![python](https://img.shields.io/badge/python-3.14-3776ab)](https://www.python.org/)
 [![license: MIT](https://img.shields.io/badge/license-MIT-yellow)](LICENSE)
 [![graph libs](https://img.shields.io/badge/graph%20libraries-none-8a3ffc)](koronis/models/layers.py)
@@ -36,12 +36,12 @@ python -m venv .venv
 .venv/bin/pip install -r requirements.txt -r requirements-dev.txt
 .venv/bin/python -m playwright install chromium   # the site tests drive the demo page
 .venv/bin/python site/build.py                    # they need docs/index.html to exist
-.venv/bin/python -m pytest tests/ -q              # 167 tests, ~1-2 min
+.venv/bin/python -m pytest tests/ -q              # 174 tests, ~1-2 min
 .venv/bin/python -m koronis.cli ablation          # reproduces the headline table below
 ```
 
-The suite runs without `requirements-dev.txt` — the four tests that drive the demo page
-skip — but then 161 are collected rather than 167, and the test-count check says so.
+The suite runs without `requirements-dev.txt` — the six tests that drive the demo page
+skip — but then 168 are collected rather than 174, and the test-count check says so.
 
 ## Key results
 
@@ -103,11 +103,14 @@ frozen threshold on this campaign.
 consolidates them and picks the intervention with the lowest expected rupee cost:
 
 ```
-402 event alerts  ->  7 incidents  ->  1 action recommended
+402 event alerts  ->  7 incidents  ->  2 actions recommended
 ```
 
-Median across 8 test streams. The policy sees only an incident's first 12 events plus a
-forecast — never the true remaining count:
+One test stream, end to end. One of those two actions was wrong — a two-attempt incident
+rate-limited when the oracle would have left it alone — and it is the *only* decision in
+that stream the oracle would have made differently, so it accounts for the whole of that
+stream's ₹520 regret. The policy sees only an incident's first 12 events plus a forecast,
+never the true remaining count. The costs below are medians across all 8 test streams:
 
 | policy | analyst minutes | merchant cost |
 |---|---:|---:|
@@ -255,7 +258,7 @@ python site/build.py                            # results/ -> docs/index.html
 | Is the *whole* pipeline causal? | yes — consolidation too, via a sliding count-min sketch in fixed memory | [Evaluation](docs/evaluation.md#making-consolidation-causal) |
 | Does it survive being split across machines? | measured — and PR-AUC and rupees disagree about which routing is better | [Evaluation](docs/evaluation.md#does-the-graph-survive-being-split-across-machines) |
 | Can the loss be recovered? | yes — replication restores recall 0.65 → 0.99 and is the cheapest routing at every shard count | [Evaluation](docs/evaluation.md#recovering-the-edges-a-partition-deletes) |
-| What broke? | 9 defects, **4 retracted claims** | [Engineering log](docs/engineering-log.md) |
+| What broke? | 12 defects, **4 retracted claims** | [Engineering log](docs/engineering-log.md) |
 
 ## Limitations
 

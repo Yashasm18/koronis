@@ -54,7 +54,7 @@ Every defect below was surfaced by running experiments, not by reading code.
    `max(τ)` as its binding constraint when a multi-entity engine needs `k ≥ n / min(τ)`;
    and the calibration split carried a 37% positive rate under which "alert on every
    event" is genuinely cost-optimal. It also reversed a headline: raw co-occurrence
-   counting, previously reported at 0.894 PR-AUC, collapses to 0.055 once legitimate
+   counting, previously reported at 0.894 PR-AUC, collapses to 0.051 once legitimate
    traffic is dense enough to co-occur constantly.
 
 7. **Two concurrent rings became one blob.** The incident layer merged two independent
@@ -67,16 +67,25 @@ Every defect below was surfaced by running experiments, not by reading code.
    and two concurrent rings stay two clean incidents. That fix moved a headline — action
    regret against the oracle had been ₹0 on 11/11 incidents, and now it is not.
 
-8. **An architectural claim that was never tested, and did not hold.** The mechanism and
-   relation ablations measured which *data sources* mattered; the heterophily gate and the
-   learned relation attention were design decisions in the model itself, argued for in
-   prose and never removed. Ablating them says the gate is **net-negative** — at full
-   camouflage, taking it out improves PR-AUC and cuts false positives from 24 to 17 — and
-   that the harm grows with camouflage, the inverse of the stated rationale. The component
-   that does earn its place is the second relational layer, and its benefit shows exactly
-   the conditional shape the gate was supposed to have. The claim is retracted in place;
-   the gate is not removed, because selecting architecture on test results is the leakage
-   this project refuses elsewhere.
+8. **An architectural claim that was never tested, and did not hold — then held less
+   than that.** The mechanism and relation ablations measured which *data sources*
+   mattered; the heterophily gate and the learned relation attention were design decisions
+   in the model itself, argued for in prose and never removed. Ablating them at the
+   two-layer depth the model then used said the gate was **net-negative** — better without
+   it on 12 of 15 seed × camouflage cells, false positives falling 24 to 17 — and that the
+   harm grew with camouflage, the inverse of the stated rationale. The claim was retracted
+   in place; the gate was not removed, because selecting architecture on test results is
+   the leakage this project refuses elsewhere.
+
+   It was removed later, by [calibration-based selection](evaluation.md#closing-the-loop-selecting-an-architecture-without-touching-test),
+   which also chose three layers — and at three layers the ablation no longer says what it
+   said at two. Adding the gate back is now **noise**: a median of +0.0005 PR-AUC at full
+   camouflage against a seed-to-seed spread of 0.992 to 0.999, winning on 2 of 5 seeds.
+   So the retraction itself needed narrowing. The honest statement is that the gate was
+   harmful at the depth it was first measured at, is neither here nor there at the depth
+   finally selected, and was removed on cost by selection rather than by that table.
+   [The current numbers.](evaluation.md#does-the-architecture-earn-its-place) The component
+   that does earn its place is depth itself.
 
 9. **A baseline that became a copy of itself.** After model selection turned the
    heterophily gate off by default, the architecture ablation kept comparing `full` — a
@@ -117,7 +126,7 @@ Every defect below was surfaced by running experiments, not by reading code.
    layers rather than at whatever depth happens to be current.
 
 An inference benchmark reporting p50 1.78 ms was also discarded: it was measured while a
-training job ran on the same machine. The idle run is 0.99 ms.
+training job ran on the same machine. The idle run is 0.91 ms.
 
 Three lessons, none about neural networks. From (1) and (4): a property you assert in a
 test gets checked; a property you merely intend gets silently violated the moment an
