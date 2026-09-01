@@ -16,6 +16,7 @@
     python -m koronis.cli sharding    # does the graph survive being split across machines
     python -m koronis.cli select      # model selection on calibration, evaluated once on test
     python -m koronis.cli replicate   # can replication recover what sharding deletes
+    python -m koronis.cli capacity    # was the model sized, or just chosen
 """
 import json
 import sys
@@ -496,6 +497,85 @@ def sharding() -> pd.DataFrame:
     return df
 
 
+# Capacity grid. Width and depth were defaults for most of this project's life,
+# and a default is not a decision. Swept on the SELECTED relation set, so this
+# asks how big the chosen architecture should be rather than re-opening which
+# architecture it is.
+#
+# PREDICTION, before the run. The input is six features and the signal is
+# structural - coordination between events, not a rich per-event
+# representation - so width should saturate almost immediately. Depth should
+# matter more, since a second hop is what reaches coordination that survives
+# camouflage, and the architecture ablation already measured exactly that. A
+# third layer should not help and may hurt: repeated neighbourhood averaging
+# drives node representations together, which is over-smoothing, and a graph
+# whose legitimate traffic is dense is a good place for it to bite.
+CAPACITY_HIDDEN = (16, 32, 64)
+CAPACITY_LAYERS = (1, 2, 3)
+
+
+def capacity(n_seeds: int = 5) -> pd.DataFrame:
+    """How large should the selected architecture be?
+
+    Same protocol as `select`: candidates scored on calibration, threshold
+    fitted on a separate calibration draw, test read once at the end.
+    """
+    rows = []
+    for seed in range(n_seeds):
+        train = _train_set(seed * 10)
+        calib_thr = _calibration_set(seed * 10 + 2)
+        calib_sel = _calibration_set(seed * 10 + 5)
+        test = _dataset(seed * 10 + 1, TEST_K, TEST_CAMO)
+        y_t, y_a, y_b = (test["label"].to_numpy(), calib_thr["label"].to_numpy(),
+                         calib_sel["label"].to_numpy())
+        for h in CAPACITY_HIDDEN:
+            for L in CAPACITY_LAYERS:
+                m = KoronisDetector(seed=seed, window_s=WINDOW_S, hidden=h, layers=L)
+                m.fit(train, epochs=60)
+                thr, _ = cost_optimal_threshold(_raw(m.score_events(calib_thr)), y_a,
+                                                COST_PER_ATTEMPT_INR,
+                                                COST_PER_FALSE_BLOCK_INR)
+                sc = _raw(m.score_events(test))
+                fired = sc >= thr
+                params = sum(p.numel() for p in m.net.parameters())
+                rows.append({
+                    "seed": seed, "hidden": h, "layers": L, "params": params,
+                    "select_cost_inr": round(_decision_cost(
+                        y_b, _raw(m.score_events(calib_sel)), thr), 1),
+                    "test_cost_inr": round(_decision_cost(y_t, sc, thr), 1),
+                    "test_pr_auc": round(float(average_precision_score(y_t, sc)), 4),
+                    "test_precision": round(float(precision_score(y_t, fired, zero_division=0)), 4),
+                    "test_recall": round(float(recall_score(y_t, fired, zero_division=0)), 4),
+                    "test_false_positives": int((fired & (y_t == 0)).sum()),
+                })
+    allr = pd.DataFrame(rows)
+    RESULTS.mkdir(exist_ok=True)
+    allr.to_csv(RESULTS / "capacity_raw.csv", index=False)
+    med = (allr.groupby(["hidden", "layers"], sort=False).median(numeric_only=True)
+           .drop(columns=["seed"]).round(4).reset_index())
+    med.to_csv(RESULTS / "capacity.csv", index=False)
+
+    win = med.loc[med["select_cost_inr"].idxmin()]
+    cur = med[(med["hidden"] == 32) & (med["layers"] == 2)].iloc[0]
+    json.dump({"selected_hidden": int(win["hidden"]), "selected_layers": int(win["layers"]),
+               "selected_params": int(win["params"]),
+               "selected_select_cost_inr": float(win["select_cost_inr"]),
+               "selected_test_cost_inr": float(win["test_cost_inr"]),
+               "default_test_cost_inr": float(cur["test_cost_inr"]),
+               "default_is_the_winner": bool(win["hidden"] == 32 and win["layers"] == 2),
+               "n_seeds": n_seeds},
+              open(RESULTS / "capacity.json", "w"), indent=2)
+
+    print(f"\ncapacity sweep, {n_seeds} trials, medians")
+    print("chosen on CALIBRATION; test shown after, never used to choose\n")
+    print(med.to_string(index=False))
+    print("\ncalibration cost by size (the column that selects):")
+    print(med.pivot(index="hidden", columns="layers", values="select_cost_inr").to_string())
+    print(f"\nchosen: hidden={int(win['hidden'])} layers={int(win['layers'])} "
+          f"({int(win['params'])} params)")
+    return med
+
+
 def replicate() -> pd.DataFrame:
     """Can copying a minority of events restore the edges a partition deletes?
 
@@ -605,12 +685,14 @@ def online(n_streams: int = 6) -> pd.DataFrame:
 # Expressed as departures from the SELECTED architecture, which is the default.
 # When the gate was still on by default this read "no_gate"; after selection
 # removed it, the honest question is what putting it back costs - and a variant
-# dict of `{}` would silently be the baseline compared against itself.
+# dict of `{}` would silently be the baseline compared against itself. Depth
+# moved here too: `koronis.cli capacity` now owns the full width x depth grid,
+# so this only needs the adjacent step down from the selected three layers.
 ARCH_VARIANTS = {
     "selected": dict(),
     "add_gate": dict(use_gate=True),
     "uniform_relation_attention": dict(use_rel_attention=False),
-    "one_layer": dict(layers=1),
+    "two_layers": dict(layers=2),
 }
 
 # The gate's justification is specific, so the test can be too. It exists to
@@ -1297,4 +1379,4 @@ if __name__ == "__main__":
      "relations": relations, "aperture": aperture,
      "architecture": architecture, "online": online,
      "sharding": sharding, "select": select,
-     "replicate": replicate}[cmd]()
+     "replicate": replicate, "capacity": capacity}[cmd]()

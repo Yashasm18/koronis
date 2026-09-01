@@ -1,4 +1,4 @@
-camouflage,add_gate,one_layer,selected,uniform_relation_attention,delta_add_gate,delta_uniform_relation_attention,delta_one_layer
-0.0,1.0,0.9993,0.9999,0.9999,-0.0001,0.0,0.0006
-0.5,0.9983,0.9774,0.9993,0.9993,0.001,0.0,0.0219
-1.0,0.9934,0.9254,0.9968,0.9965,0.0034,0.0003,0.0714
+camouflage,add_gate,selected,two_layers,uniform_relation_attention,delta_add_gate,delta_uniform_relation_attention,delta_two_layers
+0.0,1.0,0.9999,0.9999,0.9999,-0.0001,0.0,0.0
+0.5,0.9996,0.9996,0.9993,0.9996,0.0,0.0,0.0003
+1.0,0.9983,0.9978,0.9968,0.9978,-0.0005,0.0,0.001

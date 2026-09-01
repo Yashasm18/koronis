@@ -107,6 +107,15 @@ Every defect below was surfaced by running experiments, not by reading code.
    a 1× / 4× / 16× control for readers who do not want to wait. Tests assert both the pace
    and that the speed control changes it.
 
+12. **A streaming guarantee that was true by accident.** The replay cached only layer-1
+   outputs, computing layer 2 from neighbours' cached layer 1. That reproduced batch
+   scores exactly — for a two-layer model. When a calibration sweep selected three layers,
+   the parity test failed, because layer 3 needs neighbours' layer 2 and nothing was
+   keeping it. The property had been presented as a consequence of the backwards-in-time
+   edge rule, which it is; the implementation only supported it at one depth. Every
+   intermediate layer is cached now, and parity is asserted at one, two, three and four
+   layers rather than at whatever depth happens to be current.
+
 An inference benchmark reporting p50 1.78 ms was also discarded: it was measured while a
 training job ran on the same machine. The idle run is 0.99 ms.
 

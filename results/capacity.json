@@ -1,0 +1,10 @@
+{
+  "selected_hidden": 32,
+  "selected_layers": 3,
+  "selected_params": 9171,
+  "selected_select_cost_inr": 466.0,
+  "selected_test_cost_inr": 645.0,
+  "default_test_cost_inr": 892.0,
+  "default_is_the_winner": false,
+  "n_seeds": 5
+}

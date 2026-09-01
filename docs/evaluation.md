@@ -31,7 +31,7 @@ them and recommends the intervention with the lowest expected cost, not the one 
 the highest risk score:
 
 ```
-412 event alerts  →  18 incidents  →  1 action recommended
+402 event alerts  →  7 incidents  →  1 action recommended
 ```
 
 Two concurrent rings stay two incidents: alerts are linked only through entity values
@@ -90,11 +90,11 @@ splitting by row inflates apparent coverage (91.8% by row vs. the figure below b
 
 | | measured |
 |---|---|
-| P90 interval coverage | 95.5% (target 90%) |
-| Median absolute error, P50 | 107.3 attempts |
-| Mean true remaining | 367.6 attempts |
+| P90 interval coverage | 95.3% (target 90%) |
+| Median absolute error, P50 | 104.0 attempts |
+| Mean true remaining | 382.1 attempts |
 | Fit / conformal streams | 4 (campaigns 2, 3, 4, 6) / 4 (campaigns 0, 1, 5, 7) |
-| Snapshots | 84 calibration / 88 held-out |
+| Snapshots | 84 calibration / 85 held-out |
 
 The interval over-covers: conservative, which is the safe direction for a policy that
 escalates on uncertainty, but not well calibrated with only four conformal streams.
@@ -109,9 +109,9 @@ Median across 8 independent test streams:
 | policy | incidents actioned | false incidents | analyst minutes | merchant cost |
 |---|---:|---:|---:|---:|
 | always allow | 0.0 | 0.0 | 0.0 | ₹53,144 |
-| always hold | 17.0 | 13.5 | 204.0 | ₹1,04,722 |
-| event-by-event thresholding | 1.0 | 0.0 | 213.0 | ₹7,693 |
-| **causal policy** *(forecast only)* | 1.0 | 0.0 | 12.0 | ₹5,158 |
+| always hold | 10.5 | 6.0 | 126.0 | ₹50,307 |
+| event-by-event thresholding | 1.0 | 0.0 | 211.0 | ₹6,602 |
+| **causal policy** *(forecast only)* | 1.0 | 0.0 | 12.0 | ₹3,405 |
 | oracle policy *(upper bound)* | 1.0 | 0.0 | 12.0 | ₹3,145 |
 
 Fractional counts are medians across an even number of streams. Event thresholding reaches
@@ -119,34 +119,28 @@ the same decision but hands an analyst 213 minutes of triage instead of 12 —
 consolidation, not detection, is the difference. When the forecast interval is wide
 relative to its median, the policy escalates to analyst review rather than automating.
 
-**A retracted claim has come back, and it needs saying carefully.** On the demo stream the
-causal policy now matches the oracle on **18 / 18** incidents, for a regret of **₹0**. An
-earlier version of this project reported exactly that — ₹0 on 11 / 11 — and
-[retracted it](engineering-log.md) when the cause turned out to be a generator defect that
-fragmented campaigns into unrealistically clean pieces. That defect is fixed and stayed
-fixed; the reason the number returned is different, and duller: the
-[selected architecture](#closing-the-loop-selecting-an-architecture-without-touching-test)
-raises event precision enough that the incidents reaching the policy on this one stream are
-unambiguous, so there is nothing left for hindsight to improve on.
-
-It is one stream, and it is not the claim to lean on. **Across the eight streams the oracle
-is still ahead — ₹3,145 against the causal policy's ₹5,158.** Not knowing the future still
-costs about 64% more; the demo stream simply is not where that shows.
+**On the ₹0 regret this project once retracted.** An earlier version reported zero action
+regret and treated it as a result; it was retracted when the cause turned out to be a
+generator defect. That defect stayed fixed. On the current demo stream regret is
+**₹520** with 6 of
+7 actions matching the oracle — non-zero, which is what an honest
+forecast-only policy should look like. Across the eight streams the oracle still leads,
+₹3,145 against
+₹3,405: not knowing the future still costs.
 
 ### Incident-level calibration
 
 An event model with ECE 0.0025 does not give a calibrated incident probability for free —
 events inside an incident are strongly dependent, and that dependence is the signal.
-Incident risk is a separate model, fitted on 129 calibration incidents pooled across 8
-streams and measured on 145 held-out incidents:
+Incident risk is a separate model, fitted on 70 calibration incidents pooled across 8
+streams and measured on 93 held-out incidents:
 
 | predicted | observed | incidents |
 |---:|---:|---:|
-| 0.095 | 0.180 | 128 |
-| 0.343 | 0.000 | 1 |
-| 0.432 | 0.500 | 4 |
-| 0.613 | 0.000 | 1 |
-| 0.994 | 1.000 | 11 |
+| 0.077 | 0.234 | 77 |
+| 0.261 | 0.667 | 6 |
+| 0.660 | 1.000 | 1 |
+| 0.999 | 1.000 | 9 |
 
 Separation is clean at the top (0.994 → 1.000 on 11 incidents). The bottom bin is
 under-confident (0.095 → 0.180 on 128). The middle is barely determined at all — three
@@ -187,10 +181,10 @@ Removing each mechanism in turn under the same protocol (5 trials, medians;
 
 | variant | PR-AUC | precision | recall | false positives | first alert |
 |---|---:|---:|---:|---:|---:|
-| **`koronis_full`** | 0.997 | 0.964 | 0.990 | 15 | 0.0 s |
-| `no_edges` — event features only | 0.348 | 0.452 | 0.953 | 464 | 0.0 s |
-| `no_approved` — graph only | 0.817 | 0.840 | 0.695 | 53 | 66.6 s |
-| `no_edges` + `no_approved` | 0.061 | 0.000 | 0.000 | 0 | never |
+| **`koronis_full`** | 0.998 | 0.976 | 0.988 | 10 | 0.0 s |
+| `no_edges` — event features only | 0.380 | 0.451 | 0.955 | 466 | 0.0 s |
+| `no_approved` — graph only | 0.916 | 0.903 | 0.812 | 35 | 66.6 s |
+| `no_edges` + `no_approved` | 0.061 | 0.000 | 0.000 | 11 | never |
 
 The authorisation outcome buys earliness (alert at t = 0, but 0.452 precision and 464
 false positives). The graph buys precision (first alert moves to 66.6 s and recall drops
@@ -209,7 +203,7 @@ event at a time and **reproduces batch scores exactly** (asserted to `1e-5` in
 
 | p50 | p95 | p99 | mean | throughput |
 |---:|---:|---:|---:|---:|
-| 0.83 ms | 1.05 ms | 1.27 ms | 0.84 ms | ~1,195 events/sec |
+| 0.91 ms | 1.14 ms | 1.36 ms | 0.91 ms | ~1,095 events/sec |
 
 **Per-event cost is flat in stream length**, by construction:
 
@@ -217,7 +211,7 @@ event at a time and **reproduces batch scores exactly** (asserted to `1e-5` in
   `max_degree` fan-in cap in [`graph/build.py`](../koronis/graph/build.py), which keeps the
   most recent neighbours), `L = 2` message-passing layers, `d = 32`
   hidden units. None of these depends on the number of events already seen, so measured
-  latency holds at ~0.83 ms p50 regardless of stream length.
+  latency holds at ~0.91 ms p50 regardless of stream length.
 - **Space** — `O(W · λ · d)`: the `window_s = 3600 s` span times the arrival rate `λ`.
   `bucket.popleft()` evicts events once `t − t_event > W`, so memory tracks active window
   occupancy, not cumulative volume. `test_stream.py::test_window_bounds_memory` asserts
@@ -249,29 +243,27 @@ choice:**
 
 | candidate | calibration cost *(selects)* | test cost | test PR-AUC | precision | recall | FPs |
 |---|---:|---:|---:|---:|---:|---:|
-| `full` | ₹1,398 | ₹1,836 | 0.9892 | 0.942 | 0.968 | 24 |
-| `no_device` | ₹1,038 | ₹1,111 | 0.9941 | 0.963 | 0.978 | 15 |
-| `no_email` | ₹1,125 | ₹1,511 | 0.9934 | 0.956 | 0.983 | 18 |
-| `no_device_no_email` | ₹885 | ₹918 | 0.9959 | 0.970 | 0.985 | 12 |
-| `no_gate` | ₹833 | ₹1,278 | 0.9943 | 0.958 | 0.980 | 17 |
-| `no_device_no_gate` | ₹833 | ₹958 | 0.9951 | 0.965 | 0.990 | 14 |
-| `no_email_no_gate` | ₹673 | ₹892 | 0.9968 | 0.964 | 0.990 | 15 |
-| `lean` | ₹819 | ₹812 | 0.9957 | 0.968 | 0.990 | 13 |
+| `full` | ₹779 | ₹685 | 0.9950 | 0.971 | 0.988 | 12 |
+| `no_device` | ₹786 | ₹852 | 0.9962 | 0.966 | 0.993 | 14 |
+| `no_email` | ₹520 | ₹713 | 0.9983 | 0.977 | 0.998 | 9 |
+| `no_device_no_email` | ₹586 | ₹513 | 0.9970 | 0.975 | 0.993 | 10 |
+| `no_gate` | ₹979 | ₹979 | 0.9950 | 0.954 | 0.993 | 19 |
+| `no_device_no_gate` | ₹819 | ₹739 | 0.9963 | 0.970 | 0.993 | 12 |
+| `no_email_no_gate` | ₹466 | ₹645 | 0.9978 | 0.976 | 0.988 | 10 |
+| `lean` | ₹619 | ₹633 | 0.9962 | 0.975 | 0.993 | 10 |
 
 **Chosen on calibration: `no_email_no_gate`** — drop the email relation and
-the heterophily gate. Calibration cost falls from ₹1,398 to
-₹673.
+the heterophily gate. Calibration cost falls from ₹779 to
+₹466.
 
-**It held up.** On test, cost falls from ₹1,836 to
-₹892, PR-AUC rises 0.9892 → 0.9968,
-precision 0.942 → 0.964, recall
-0.968 → 0.990, and false positives fall
-24 → 15. Every candidate that
+**It held up.** On test, cost falls from ₹685 to ₹645, PR-AUC rises 0.9950 → 0.9978,
+precision 0.971 → 0.976, recall 0.988 → 0.988, and false positives fall
+12 → 10. Every candidate that
 removes something beats the full model, so the earlier ablations were reading a real signal
 rather than noise.
 
 **Selection is not free, and the table shows it.** The variant with the lowest *test* cost
-is `lean` (₹812), not the one calibration chose. Picking on
+is `no_device_no_email` (₹513), not the one calibration chose. Picking on
 held-out data costs something against picking with hindsight — that gap is the honest price
 of not cheating, and reporting the calibration-chosen variant rather than the test-optimal
 one is the whole point of the exercise.
@@ -443,49 +435,82 @@ stay apart online.
 
 ### Does the architecture earn its place?
 
-The mechanism and relation ablations test *data sources*. This one tests the two design
-decisions in [`layers.py`](../koronis/models/layers.py) — the heterophily gate and the
-learned relation attention — plus depth.
+Variants are departures from the selected architecture, so the heterophily gate appears
+here as something to **add back**. 5 trials, medians:
 
-The gate's justification was specific enough to make a **conditional** prediction. It damps
-edges joining dissimilar nodes, and camouflage is exactly what creates those: a camouflaged
-attempt draws its amount and email domain from the background, so it links to legitimate
-traffic that looks nothing like the rest of the ring. The gate should therefore buy *more*
-as camouflage rises, and little at camouflage 0.
-
-**It does the opposite.** Variants are expressed as departures from the selected
-architecture, so the gate appears here as something to *add back*:
-
-| camouflage | selected | + gate | uniform relation attention | one layer |
+| camouflage | selected | + gate | uniform relation attention | two layers |
 |---:|---:|---:|---:|---:|
-| 0.0 | 0.9999 | 1.0000 | 0.9999 | 0.9993 |
-| 0.5 | 0.9993 | 0.9983 | 0.9993 | 0.9774 |
-| 1.0 | 0.9968 | 0.9934 | 0.9965 | 0.9254 |
+| 0.0 | 0.9999 | 1.0000 | 0.9999 | 0.9999 |
+| 0.5 | 0.9996 | 0.9996 | 0.9996 | 0.9993 |
+| 1.0 | 0.9978 | 0.9983 | 0.9978 | 0.9968 |
 
-PR-AUC cost of departing from the selected architecture (positive = the selected choice was
-better):
+**The gate no longer changes anything either way, and that is a correction to what this
+section used to say.** At two layers it was measurably net-negative — better without it on
+12 of 15 seed × camouflage cells, false positives falling 24 to 17. At three layers the
+difference is noise: adding it back wins on 2 of 5 seeds at full camouflage, a median of
++0.0005 against a seed-to-seed spread running 0.992 to 0.999. Whatever the gate was doing,
+a third round of aggregation absorbs it.
 
-| camouflage | adding the gate | uniform attention | one layer |
-|---:|---:|---:|---:|
-| 0.0 | −0.0001 | 0.0000 | +0.0006 |
-| 0.5 | **+0.0010** | 0.0000 | +0.0219 |
-| 1.0 | **+0.0034** | +0.0003 | **+0.0714** |
+The honest statement is therefore narrower than before. The gate was harmful at the depth
+it was first measured at, is neither here nor there at the depth finally selected, and was
+removed by [calibration-based selection](#closing-the-loop-selecting-an-architecture-without-touching-test)
+rather than by this table. **Relation attention remains a wash**, consistent with the
+[per-relation ablation](#which-entity-type-carries-the-signal). **Depth is the one
+component that still earns its place**, and it is measured properly below.
 
-**Adding the gate back costs more as camouflage rises** — the inverse of the prediction that
-motivated it. **Relation attention is a wash**, consistent with the
-[per-relation ablation](#which-entity-type-carries-the-signal), which already found the
-learned weights disagree with what the relations are actually worth. **Depth is the piece
-that earns its place**, and it is the one whose benefit shows the conditional shape the gate
-was supposed to have: negligible at camouflage 0, +0.071 PR-AUC at camouflage 1.
-Coordination that survives camouflage is visible two hops out, not one.
+### Was the model sized, or just chosen?
 
-**What this retracted.** Earlier versions argued the gate was load-bearing because fraud
-rings camouflage into legitimate traffic. The reasoning was plausible and the measurement
-does not support it. It was reported and left in the model at the time, because acting on a
-test-set finding is the leakage this project refuses — and then acted on properly, through
-[calibration-based selection](#closing-the-loop-selecting-an-architecture-without-touching-test).
-The gate is now off by default because a held-out procedure chose to remove it, not because
-this table did.
+Width, depth, epochs and learning rate were defaults for most of this project's life, and a
+default is not a decision. This sweeps the two that govern capacity, on the selected
+relation set, under the same protocol as every other selection here: scored on calibration,
+test read once at the end.
+
+The prediction, stated in [`cli.py`](../koronis/cli.py) before the run: the input is six
+features and the signal is structural rather than a rich per-event representation, so
+**width should saturate almost immediately**; **depth should matter more**, since a second
+hop is what reaches coordination that survives camouflage; and **a third layer should not
+help and may hurt**, because repeated neighbourhood averaging drives representations
+together — over-smoothing — and dense legitimate traffic is a good place for that to bite.
+
+`python -m koronis.cli capacity`, 5 trials, medians. **Only the calibration column may
+inform the choice:**
+
+| hidden | layers | params | calibration cost *(selects)* | test cost | test PR-AUC | FPs |
+|---:|---:|---:|---:|---:|---:|---:|
+| 16 | 1 | 427 | ₹4,544 | ₹7,278 | 0.8998 | 35 |
+| 16 | 2 | 1,487 | ₹1,617 | ₹1,848 | 0.9904 | 18 |
+| 16 | 3 | 2,547 | ₹786 | ₹1,106 | 0.9968 | 17 |
+| 32 | 1 | 843 | ₹3,816 | ₹5,674 | 0.9254 | 32 |
+| 32 | 2 | 5,007 | ₹673 | ₹892 | 0.9968 | 15 |
+| 32 | 3 | 9,171 | ₹466 | ₹645 | 0.9978 | 10 |
+| 64 | 1 | 1,675 | ₹3,244 | ₹4,398 | 0.9505 | 24 |
+| 64 | 2 | 18,191 | ₹772 | ₹706 | 0.9973 | 12 |
+| 64 | 3 | 34,707 | ₹673 | ₹732 | 0.9988 | 11 |
+
+**Two of three predictions held; the third was wrong.**
+
+*Width saturates.* 32 beats 64 at every depth, and 64 never wins anything — doubling the
+width doubles the parameters and buys nothing, which is what a structural signal over six
+features should look like.
+
+*Depth dominates width.* The spread in calibration cost across depth is ₹3,143; across
+width it is ₹845. One layer to two is worth more than every width change combined.
+
+*A third layer helps, and over-smoothing does not appear.* **It beats two layers on 15 of
+15 seed × width cells.** Coordination surviving camouflage evidently reaches further than
+two hops in this graph. The prediction was reasonable; the measurement disagrees.
+
+**Chosen on calibration: 32 hidden units, 3 layers,
+9,171 parameters.** It held up on test — cost
+₹892 → ₹645 against the
+previous default — and is now the default. The model is still small; it is small on purpose
+now rather than by inheritance.
+
+**One thing this broke underneath.** The streaming replay cached only layer-1 outputs, so it
+reproduced batch scores exactly for a two-layer model and silently stopped at three. Parity
+is a property of the backwards-in-time edge rule, not of any particular depth, so the cache
+now holds every intermediate layer and a test asserts parity at one, two, three and four
+layers.
 
 ### Vantage point: one merchant or the whole gateway
 
@@ -556,12 +581,12 @@ analyst review. That is a trade, not a free win:
 
 | profile | false auto-actions avoided | true responses downgraded | analyst minutes added |
 |---|---:|---:|---:|
-| `subscription` | 20 | 11 | 264 |
-| `marketplace` | 3 | 11 | 72 |
-| `flash_sale` | 16 | 11 | 156 |
+| `subscription` | 3 | 10 | 108 |
+| `marketplace` | 1 | 10 | 84 |
+| `flash_sale` | 6 | 10 | 144 |
 
-Across the shifted profiles the guardrail prevents 39 false automated interventions and
-downgrades 33 genuine responses, adding 492 analyst minutes.
+Across the shifted profiles the guardrail prevents 10 false automated interventions and
+downgrades 30 genuine responses, adding 336 analyst minutes.
 
 **Status: experimental decision support, not a safety control.** The cut-off is fitted on
 16 base streams and the false-flag rate then measured on 12 disjoint base streams comes

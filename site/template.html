@@ -376,11 +376,12 @@ td.rng{color:var(--ink-3);font-size:10.5px}
         <p>The other ablations remove <i>data sources</i>. This one removes the two design
         decisions in the model itself. The heterophily gate was argued for on the grounds that
         rings camouflage into legitimate traffic, which predicts it should help <i>more</i> as
-        camouflage rises. <b>It does the opposite</b> — adding the gate back costs more as
-        camouflage rises. The claim was retracted, and then acted on properly: a
-        calibration-only selection removed the gate, so it is off by default here. The
-        <b>second layer</b> is the piece that earns its place, and it shows the conditional
-        shape the gate was supposed to have.</p>
+        camouflage rises. It did the opposite at two layers, where it was measurably
+        net-negative. At the three layers finally selected the difference is <b>noise</b> —
+        so the honest statement is that the gate was harmful at one depth and irrelevant at
+        another, and a calibration-only selection removed it either way. <b>Depth</b> is the
+        component that still earns its place, measured across a width × depth grid rather
+        than by this table alone.</p>
       </div>
     </div>
     <div class="panel">
@@ -788,11 +789,11 @@ table(el("t-arch"), [
   {h:"selected", f:function(r){return _av(r.c,"selected").pr.toFixed(4);}},
   {h:"+ gate", f:function(r){return _av(r.c,"add_gate").pr.toFixed(4);}},
   {h:"uniform attention", f:function(r){return _av(r.c,"uniform_relation_attention").pr.toFixed(4);}},
-  {h:"one layer", f:function(r){return _av(r.c,"one_layer").pr.toFixed(4);}},
+  {h:"two layers", f:function(r){return _av(r.c,"two_layers").pr.toFixed(4);}},
   {h:"gate costs", f:function(r){
       return (_av(r.c,"selected").pr - _av(r.c,"add_gate").pr).toFixed(4);}},
-  {h:"2nd layer is worth", f:function(r){
-      return (_av(r.c,"selected").pr - _av(r.c,"one_layer").pr).toFixed(4);}}
+  {h:"3rd layer is worth", f:function(r){
+      return (_av(r.c,"selected").pr - _av(r.c,"two_layers").pr).toFixed(4);}}
 ], ACAMOS.map(function(c){return {c:c};}));
 el("arch-hint").textContent = "PR-AUC \u00b7 5 trials, medians \u00b7 negative = the piece was hurting";
 

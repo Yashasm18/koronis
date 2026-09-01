@@ -10,7 +10,7 @@ How Koronis is built, and which parts of it are learned.
 flowchart TB
     IN["<b>Attempt stream</b> — ts · amount · auth outcome · device · IP · BIN · email"]
     G["<b>Temporal graph</b>, strictly causal — backwards-in-time edges · window 3600 s · fan-in ≤ 32"]
-    MP["<b>Relational message passing</b>, written from scratch — torch.index_add_ · per-relation weights · 2 layers · cost-sensitive loss trained on rupees"]
+    MP["<b>Relational message passing</b>, written from scratch — torch.index_add_ · per-relation weights · 3 layers · cost-sensitive loss trained on rupees"]
     SC{"score ≥ frozen threshold?"}
     CON["<b>Incident consolidation</b> — union-find on the alerted subgraph · links only via values &lt; 2% of stream"]
     FC["<b>Incident risk + exposure forecast</b> — separately recalibrated risk · P50/P90 from the first 12 events · conformal band"]
@@ -78,8 +78,8 @@ form, and each is measured rather than asserted:
 | Component | What it learns | Measured in |
 |---|---|---|
 | Relational message passing ([`layers.py`](../koronis/models/layers.py)) | which entity relations carry coordination, via a learned softmax `a_r` over relations | [per-relation ablation](evaluation.md#which-entity-type-carries-the-signal) — BIN carries it; device and email are net-negative |
-| Heterophily gate `g(x_u,x_v) = σ(W·abs(x_u−x_v))` | which edges to damp, intended for camouflage edges into legitimate traffic | [architecture ablation](evaluation.md#does-the-architecture-earn-its-place) — **measured net-negative**, then removed by [calibration-based selection](evaluation.md#closing-the-loop-selecting-an-architecture-without-touching-test). It is off by default; the code remains, behind `use_gate` |
-| Depth — 2 relational layers | coordination visible two hops out, which is what survives camouflage | [architecture ablation](evaluation.md#does-the-architecture-earn-its-place) — +0.041 PR-AUC at full camouflage, better on 15/15 cells |
+| Heterophily gate `g(x_u,x_v) = σ(W·abs(x_u−x_v))` | which edges to damp, intended for camouflage edges into legitimate traffic | [architecture ablation](evaluation.md#does-the-architecture-earn-its-place) — net-negative at two layers, **within noise at three**; selected out on calibration either way. Off by default, code retained behind `use_gate` |
+| Depth — 3 relational layers | coordination visible two hops out, which is what survives camouflage | [capacity sweep](evaluation.md#was-the-model-sized-or-just-chosen) — depth dominates width; three layers chosen on calibration |
 | Cost-sensitive objective ([`loss.py`](../koronis/models/loss.py)) | a decision boundary in rupees, not in cross-entropy | false-positive counts in [held-out detection](../README.md#key-results) |
 | Incident risk — L2 logistic, fitted by gradient descent | whether a *consolidated incident* is genuine; event calibration does not transfer, because events inside one are dependent | [incident-level calibration](evaluation.md#incident-level-calibration) |
 | Quantile regression + split conformal ([`forecast.py`](../koronis/forecast.py)) | how many attempts remain, and an interval it can defend | [exposure forecast](evaluation.md#exposure-forecast) — 96.6% coverage against a 90% target |

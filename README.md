@@ -3,7 +3,7 @@
 > Detection of distributed card-testing campaigns that per-entity velocity rules cannot see at any threshold.
 
 [![CI](https://github.com/Yashasm18/koronis/actions/workflows/ci.yml/badge.svg)](https://github.com/Yashasm18/koronis/actions/workflows/ci.yml)
-[![tests](https://img.shields.io/badge/tests-163%20passing-2ea44f)](tests/)
+[![tests](https://img.shields.io/badge/tests-167%20passing-2ea44f)](tests/)
 [![python](https://img.shields.io/badge/python-3.14-3776ab)](https://www.python.org/)
 [![license: MIT](https://img.shields.io/badge/license-MIT-yellow)](LICENSE)
 [![graph libs](https://img.shields.io/badge/graph%20libraries-none-8a3ffc)](koronis/models/layers.py)
@@ -36,12 +36,12 @@ python -m venv .venv
 .venv/bin/pip install -r requirements.txt -r requirements-dev.txt
 .venv/bin/python -m playwright install chromium   # the site tests drive the demo page
 .venv/bin/python site/build.py                    # they need docs/index.html to exist
-.venv/bin/python -m pytest tests/ -q              # 163 tests, ~1-2 min
+.venv/bin/python -m pytest tests/ -q              # 167 tests, ~1-2 min
 .venv/bin/python -m koronis.cli ablation          # reproduces the headline table below
 ```
 
 The suite runs without `requirements-dev.txt` — the four tests that drive the demo page
-skip — but then 157 are collected rather than 163, and the test-count check says so.
+skip — but then 161 are collected rather than 167, and the test-count check says so.
 
 ## Key results
 
@@ -78,29 +78,32 @@ independent trials (`python -m koronis.cli seeds`):
 | `decline_burst` *(no graph, no learning)* | 0.222 `[0.205, 0.234]` | 0.000 | 0.000 | 0 | 3 / 10 |
 | `shared_entity` *(graph, no learning)* | 0.051 `[0.050, 0.051]` | 0.000 | 0.000 | 40 | 0 / 10 |
 | `gbdt_per_txn` | 0.332 `[0.311, 0.352]` | 0.410 | 0.836 | 476 | 10 / 10 |
-| **`koronis_graph`** | **0.996** `[0.989, 0.998]` | **0.965** | **0.988** | **14** | **10 / 10** |
+| **`koronis_graph`** | **0.997** `[0.996, 0.999]` | **0.977** | **0.990** | **10** | **10 / 10** |
 
 Threshold rules do not degrade here — they stop working: at `k = 60` against a binding
 `τ = 8`, no counter can trip. The per-transaction model detects every time but at **476
-false positives against Koronis's 14**. Recall was never the hard part; precision at a
+false positives against Koronis's 10**. Recall was never the hard part; precision at a
 usable alert volume is.
 
-The architecture producing these numbers was **chosen on the calibration split**, not
-picked by hand — three relations and no heterophily gate, after eight candidates were
-scored without ever reading test.
-[How that was done, and what it cost.](docs/evaluation.md#closing-the-loop-selecting-an-architecture-without-touching-test)
+Every part of the architecture producing these numbers was **chosen on the calibration
+split**, never by hand: which relations to keep and whether to gate
+([eight candidates](docs/evaluation.md#closing-the-loop-selecting-an-architecture-without-touching-test)),
+and how large to make it — 32 hidden units and 3 layers,
+9,171 parameters, from a
+[nine-point width × depth grid](docs/evaluation.md#was-the-model-sized-or-just-chosen).
+Test was read once, after each choice was already made.
 
 **Detection latency.** At one minute Koronis has already recalled every campaign attempt
-so far, at 0.38 precision against the per-transaction model's 0.09; by ten minutes it is at
-0.85 precision with 0.96 recall. None of the three learning-free detectors ever crosses its
+so far, at 0.46 precision against the per-transaction model's 0.09; by ten minutes it is at
+0.90 precision with 0.94 recall. None of the three learning-free detectors ever crosses its
 frozen threshold on this campaign.
 → [full latency curves](docs/evaluation.md#streaming-and-inference-latency)
 
-**An alert is not a task.** Four hundred event alerts are one campaign, so Koronis
+**An alert is not a task.** Hundreds of event alerts are one campaign, so Koronis
 consolidates them and picks the intervention with the lowest expected rupee cost:
 
 ```
-412 event alerts  ->  18 incidents  ->  1 action recommended
+402 event alerts  ->  7 incidents  ->  1 action recommended
 ```
 
 Median across 8 test streams. The policy sees only an incident's first 12 events plus a
@@ -108,14 +111,14 @@ forecast — never the true remaining count:
 
 | policy | analyst minutes | merchant cost |
 |---|---:|---:|
-| always hold | 204.0 | ₹1,04,722 |
-| event-by-event thresholding | 213.0 | ₹7,693 |
-| **causal policy** *(forecast only)* | **12.0** | **₹5,158** |
+| always hold | 126.0 | ₹50,307 |
+| event-by-event thresholding | 211.0 | ₹6,602 |
+| **causal policy** *(forecast only)* | **12.0** | **₹3,405** |
 | oracle *(upper bound, knows the future)* | 12.0 | ₹3,145 |
 
 Event thresholding reaches the same decision and hands an analyst **eighteen times the
 triage**. Consolidation, not detection, is the difference. Not knowing the future still
-costs — ₹5,158 against the oracle's ₹3,145.
+costs — ₹3,405 against the oracle's ₹3,145.
 
 ## Architecture
 
@@ -124,7 +127,7 @@ costs — ₹5,158 against the oracle's ₹3,145.
 flowchart TB
     IN["<b>Attempt stream</b> — ts · amount · auth outcome · device · IP · BIN · email"]
     G["<b>Temporal graph</b>, strictly causal — backwards-in-time edges · window 3600 s · fan-in ≤ 32"]
-    MP["<b>Relational message passing</b>, written from scratch — torch.index_add_ · per-relation weights · 2 layers · cost-sensitive loss trained on rupees"]
+    MP["<b>Relational message passing</b>, written from scratch — torch.index_add_ · per-relation weights · 3 layers · cost-sensitive loss trained on rupees"]
     SC{"score ≥ frozen threshold?"}
     CON["<b>Incident consolidation</b> — union-find on the alerted subgraph · links only via values &lt; 2% of stream"]
     FC["<b>Incident risk + exposure forecast</b> — separately recalibrated risk · P50/P90 from the first 12 events · conformal band"]
@@ -168,7 +171,7 @@ flowchart TB
     CO["Checkout"] --> PRE{"pre-auth risk check<br/>key-value lookup by device · IP · BIN<br/><b>no model call</b>"}
     PRE --> ACQ["Acquirer / card network"]
     ACQ -->|"authorisation outcome"| BUS["Event stream, partitioned by BIN"]
-    BUS --> SC["<b>Koronis scorers</b> — 8 workers<br/>0.83 ms per event · 1 h window<br/>shared device / IP replicated across shards"]
+    BUS --> SC["<b>Koronis scorers</b> — 9 workers<br/>0.91 ms per event · 1 h window<br/>shared device / IP replicated across shards"]
     SC --> CON["<b>Consolidation</b> — online union-find<br/>count-min sketch, 4 MB fixed"]
     CON --> POL["<b>Incident risk → exposure forecast → cost-optimal action</b>"]
     POL --> KV["Decision store<br/>entity → action, expires with the window"]
@@ -180,8 +183,8 @@ Scoring consumes the authorisation stream asynchronously. Decisions are written 
 key-value store keyed by entity, and the pre-auth path performs a **lookup** — the same
 shape as the velocity counters most gateways already run there.
 
-**Sizing, from measured constants.** At 0.83 ms per event and 1,195 events/sec per worker,
-eight workers cover ~9,600 events/sec. Memory is bounded by the window rather than by
+**Sizing, from measured constants.** At 0.91 ms per event and 1,095 events/sec per worker,
+nine workers cover ~9,900 events/sec. Memory is bounded by the window rather than by
 traffic history, and the frequency state is fixed at 4 MB regardless of how many distinct
 entity values pass through — which matters, because a card-testing campaign mints a fresh
 card id per attempt.
@@ -241,14 +244,14 @@ python site/build.py                            # results/ -> docs/index.html
 
 | Question | Answer | Detail |
 |---|---|---|
-| Does it detect what velocity rules cannot? | 0.996 PR-AUC vs 0.062, on a hold-out spread past the boundary | [Evaluation → protocol](docs/evaluation.md#protocol) |
-| What does a false positive cost? | costed in rupees; 14 FPs against a GBDT's 476 | [Evaluation → decision layer](docs/evaluation.md#decision-layer) |
+| Does it detect what velocity rules cannot? | 0.997 PR-AUC vs 0.062, on a hold-out spread past the boundary | [Evaluation → protocol](docs/evaluation.md#protocol) |
+| What does a false positive cost? | costed in rupees; 10 FPs against a GBDT's 476 | [Evaluation → decision layer](docs/evaluation.md#decision-layer) |
 | Which mechanism carries the signal? | outcome buys earliness, the graph buys precision | [Evaluation](docs/evaluation.md#which-mechanism-carries-the-signal) |
 | Do the architectural claims hold? | one did not — the heterophily gate was **net-negative**, and selection removed it | [Evaluation](docs/evaluation.md#does-the-architecture-earn-its-place) |
-| Can that be acted on without cheating? | yes — chosen on calibration, held up on test: cost ₹1,836 → ₹892 | [Evaluation](docs/evaluation.md#closing-the-loop-selecting-an-architecture-without-touching-test) |
+| Was the model sized, or just chosen? | sized — 32×3 selected on calibration from a 9-point grid, and it held up on test | [Evaluation](docs/evaluation.md#closing-the-loop-selecting-an-architecture-without-touching-test) |
 | Is a gateway's wider view worth anything? | measured: the gap grows with the number of merchants | [Evaluation](docs/evaluation.md#vantage-point-one-merchant-or-the-whole-gateway) |
 | Does it survive a different merchant? | flagged on all three shifted profiles; the guardrail is **experimental** | [Evaluation](docs/evaluation.md#traffic-profile-transfer-stress-test) |
-| Can it run online? | 0.83 ms p50; streaming reproduces batch scores exactly | [Evaluation](docs/evaluation.md#streaming-and-inference-latency) |
+| Can it run online? | 0.91 ms p50; streaming reproduces batch scores exactly | [Evaluation](docs/evaluation.md#streaming-and-inference-latency) |
 | Is the *whole* pipeline causal? | yes — consolidation too, via a sliding count-min sketch in fixed memory | [Evaluation](docs/evaluation.md#making-consolidation-causal) |
 | Does it survive being split across machines? | measured — and PR-AUC and rupees rank the routing keys **oppositely** | [Evaluation](docs/evaluation.md#does-the-graph-survive-being-split-across-machines) |
 | Can the loss be recovered? | yes — replication restores recall 0.45 → 0.995 at 2.6× compute, and wins up to 8 shards | [Evaluation](docs/evaluation.md#recovering-the-edges-a-partition-deletes) |

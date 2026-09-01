@@ -58,10 +58,10 @@ class _Net(nn.Module):
 class KoronisDetector:
     """Inductive graph detector for coordinated card-testing campaigns.
 
-    The default architecture is the one selected on the calibration split by
-    `koronis.cli select`: three relations, and the heterophily gate off. Both
-    were arrived at by measurement rather than by preference - see
-    docs/evaluation.md.
+    The default architecture is the one selected on the calibration split:
+    three relations and no heterophily gate (`koronis.cli select`), at 32
+    hidden units and 3 layers (`koronis.cli capacity`). Every one of those was
+    arrived at by measurement rather than preference - see docs/evaluation.md.
 
     Inductive by construction: there are no per-entity embedding tables, only
     per-relation weights. Entity ids never enter the model — they only decide
@@ -69,7 +69,7 @@ class KoronisDetector:
     has never seen, which is the only regime that matters in production.
     """
 
-    def __init__(self, hidden: int = 32, layers: int = 2,
+    def __init__(self, hidden: int = 32, layers: int = 3,
                  window_s: float = 3600.0, seed: int = 0,
                  use_approved: bool = True, use_edges: bool = True,
                  use_gate: bool = False, use_rel_attention: bool = True,

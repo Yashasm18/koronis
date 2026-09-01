@@ -76,3 +76,24 @@ def test_window_bounds_memory(fitted):
         s.push(row)
     live = sum(len(d) for rel in s._index.values() for d in rel.values())
     assert live < len(ev) * len(s._index)
+
+
+@pytest.mark.parametrize("layers", [1, 2, 3, 4])
+def test_batch_parity_holds_at_any_depth(layers):
+    """The stream kept only layer 1, so it happened to be exact for a
+    two-layer model and silently stopped being exact the moment the selected
+    depth changed. Parity is a property of the backwards-in-time edge rule,
+    not of a particular depth, so it is asserted across depths."""
+    bg = load_background(path=None, n_rows=900, seed=0)
+    spec = CampaignSpec(n_attempts=90, k_devices=9, k_ips=9, n_bins=9,
+                        duration_s=900.0, start_ts=float(bg["ts"].iloc[80]),
+                        camouflage=1.0)
+    ev = inject(bg, [spec], seed=0)
+    det = KoronisDetector(seed=0, window_s=900.0, layers=layers)
+    det.fit(ev, epochs=5)
+    batch = det.score_events(ev)
+    stream = StreamingKoronis(det, threshold=0.5, window_s=900.0)
+    online = np.array([stream.push(r)["score"] for _, r in ev.iterrows()])
+    assert np.allclose(batch, online, atol=1e-5), (
+        f"streaming diverged from batch at {layers} layers "
+        f"(max delta {np.abs(batch - online).max():.2e})")

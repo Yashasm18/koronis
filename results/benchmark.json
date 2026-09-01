@@ -1,9 +1,9 @@
 {
   "n_measured": 6200,
   "n_warmup": 200,
-  "p50_ms": 0.83,
-  "p95_ms": 1.047,
-  "p99_ms": 1.27,
-  "mean_ms": 0.837,
-  "throughput_eps": 1194.6
+  "p50_ms": 0.909,
+  "p95_ms": 1.141,
+  "p99_ms": 1.358,
+  "mean_ms": 0.913,
+  "throughput_eps": 1095.2
 }

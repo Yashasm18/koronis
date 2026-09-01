@@ -41,8 +41,15 @@ class StreamingKoronis:
         # stream indexes relations the batch model never looked at.
         self.relations = list(detector.relations)
 
-        self._x: list[torch.Tensor] = []          # per-event features
-        self._h1: list[torch.Tensor] = []         # cached layer-1 outputs
+        # One cache per layer. Layer k of a new event aggregates its
+        # neighbours' layer k-1 outputs, so every intermediate layer has to be
+        # kept, not just the first. Holding only layer 1 silently limited the
+        # stream to a two-layer model - it matched the batch scores exactly
+        # right up until the selected depth changed, and then stopped.
+        self._x: list[torch.Tensor] = []                       # layer 0
+        self._h: list[list[torch.Tensor]] = [
+            [] for _ in range(len(detector.net.layers) - 1)     # layers 1..L-1
+        ]
         self._ts: list[float] = []
         self._alerted: list[bool] = []
         self._index: dict[str, dict[str, deque]] = {
@@ -63,16 +70,22 @@ class StreamingKoronis:
         neighbours, evidence = self._neighbours(event, ts)
 
         with torch.no_grad():
-            l1, l2 = self.net.layers[0], self.net.layers[1]
-            # Layer 1 aggregates neighbours' raw features.
-            h1 = l1.forward_single(x, [self._stack(n, self._x) for n in neighbours])
-            # Layer 2 aggregates neighbours' cached layer-1 outputs.
-            h2 = l2.forward_single(h1, [self._stack(n, self._h1) for n in neighbours])
-            score = float(torch.sigmoid(self.net.head(h2)).item())
+            # Layer k reads its neighbours' layer k-1. Backwards-in-time edges
+            # guarantee every neighbour is older, so its layer k-1 was already
+            # computed from events older still - which is why this reproduces
+            # the batch pass exactly at any depth rather than approximately.
+            h = x
+            below = self._x
+            hidden = []
+            for layer, cache in zip(self.net.layers, [self._x] + self._h):
+                h = layer.forward_single(h, [self._stack(n, cache) for n in neighbours])
+                hidden.append(h)
+            score = float(torch.sigmoid(self.net.head(h)).item())
 
         alert = score >= self.threshold
         self._x.append(x)
-        self._h1.append(h1)
+        for k, cache in enumerate(self._h):        # layers 1..L-1 only
+            cache.append(hidden[k])
         self._ts.append(ts)
         self._alerted.append(alert)
         self._remember(event, idx, ts)
