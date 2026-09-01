@@ -10,7 +10,7 @@ python -m venv .venv
 .venv/bin/pip install -r requirements.txt -r requirements-dev.txt
 .venv/bin/python -m playwright install chromium     # for the site-render tests
 .venv/bin/python site/build.py                      # the site tests need docs/index.html
-.venv/bin/python -m pytest tests/ -q                # 176 tests, ~1–2 min
+.venv/bin/python -m pytest tests/ -q                # 178 tests, ~1–2 min
 ```
 
 `requirements-dev.txt` is test-only. The suite runs without it — the tests that
@@ -47,6 +47,18 @@ The demo site is regenerated, never hand-edited:
 ```bash
 python site/build.py       # results/  ->  docs/index.html
 ```
+
+So is the screen recording in the README. It shows live figures, so a change to
+`results/` or to the demo page's controls makes it stale — and being a binary, nothing
+reads it. `tests/test_demo_recording_is_current.py` compares a committed stamp against
+both, and fails when either moves:
+
+```bash
+python site/build.py && python site/record_demo.py    # needs ffmpeg on PATH
+```
+
+That refreshes the stamp as its last step. Do not hand-edit the stamp — updating it
+without remaking the recording defeats the only check on the image.
 
 If a change moves a metric, re-run the affected experiment(s), rebuild the site, and
 update the matching numbers in the README **in the same PR**.

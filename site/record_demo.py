@@ -1,0 +1,158 @@
+"""Record the README's screen capture of the demo console, and encode it.
+
+Drives the built docs/index.html in Chromium, films the replay and a tour of the
+evaluation and method tabs, then writes the three assets the README links:
+
+    docs/assets/koronis-demo.gif          the inline hero image
+    docs/assets/koronis-demo.mp4          the full-resolution recording
+    docs/assets/koronis-demo-poster.png   a still
+
+Finally it refreshes docs/assets/koronis-demo.stamp, which
+tests/test_demo_recording_is_current.py checks so a re-run of the experiments
+cannot leave a recording of the old numbers sitting at the top of the README.
+
+Needs Playwright's Chromium (requirements-dev.txt) and ffmpeg on PATH.
+
+    python site/build.py && python site/record_demo.py
+"""
+import pathlib
+import shutil
+import subprocess
+import sys
+import tempfile
+
+from playwright.sync_api import sync_playwright
+
+ROOT = pathlib.Path(__file__).resolve().parents[1]
+ASSETS = ROOT / "docs" / "assets"
+INDEX = ROOT / "docs" / "index.html"
+
+# The replay is paced against the wall clock: one pass is 42 s at 1x. An earlier
+# version of this script throttled requestAnimationFrame to slow the replay down.
+# That worked only while the replay advanced a fixed amount per frame; once the
+# pacing moved onto the wall clock, throttling cut the frame rate and nothing
+# else, so the recording came out juddery and cut away mid-replay. Use the page's
+# own speed control instead - the same one a viewer has. 42 s / 4 = ~11 s.
+SPEED = 4
+W, H = 1280, 800
+
+# 64 colours is ample for a near-monochrome console, and 8 fps keeps the GIF near
+# 5 MB. The previous recording compressed better only because the broken frame
+# throttle produced near-duplicate frames; a recording that actually animates
+# needs the palette and frame rate turned down instead.
+GIF_FPS, GIF_COLORS, GIF_W = 8, 64, 760
+MP4_W, MP4_H = 1200, 750
+
+
+def capture(out_dir: pathlib.Path) -> pathlib.Path:
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        ctx = browser.new_context(
+            viewport={"width": W, "height": H},
+            record_video_dir=str(out_dir),
+            record_video_size={"width": W, "height": H},
+        )
+        pg = ctx.new_page()
+        pg.goto(INDEX.as_uri())
+        pg.wait_for_timeout(1800)
+
+        # --- replay, watched from the top (stats + chart + live feed) ---
+        pg.click(f'.speed button[data-speed="{SPEED}"]')
+        pg.wait_for_timeout(700)
+        pg.click("#play")
+        pg.wait_for_timeout(3800)
+        # slide down to the evidence graph + action ladder while it is still running
+        pg.mouse.move(640, 400)
+        pg.mouse.wheel(0, 520)
+        pg.wait_for_timeout(3400)
+        pg.mouse.wheel(0, 460)
+
+        # Wait for the stream to actually drain rather than guessing a duration -
+        # a fixed sleep is what let an earlier recording cut away early.
+        pg.wait_for_function(
+            "() => document.getElementById('play').textContent === 'Replay incident'",
+            timeout=60_000,
+        )
+        pg.wait_for_timeout(2600)
+
+        # --- the audit dossier, opened ---
+        pg.eval_on_selector("#dossier-wrap", "e => e.open = true")
+        pg.eval_on_selector("#dossier-wrap", "e => e.scrollIntoView({block:'center'})")
+        pg.wait_for_timeout(3400)
+
+        # --- tour: evaluation, including the frontier chart ---
+        pg.mouse.wheel(0, -2600)
+        pg.wait_for_timeout(700)
+        pg.click('.tabs button[data-tab="eval"]')
+        pg.wait_for_timeout(1800)
+        for _ in range(7):
+            pg.mouse.wheel(0, 520)
+            pg.wait_for_timeout(1400)
+
+        # --- tour: method & limitations ---
+        pg.mouse.wheel(0, -6000)
+        pg.wait_for_timeout(400)
+        pg.click('.tabs button[data-tab="method"]')
+        pg.wait_for_timeout(1600)
+        for _ in range(3):
+            pg.mouse.wheel(0, 520)
+            pg.wait_for_timeout(1500)
+        pg.wait_for_timeout(900)
+
+        ctx.close()
+        browser.close()
+
+    return next(iter(out_dir.glob("*.webm")))
+
+
+def run(*args) -> None:
+    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", *map(str, args)], check=True)
+
+
+def encode(src: pathlib.Path, tmp: pathlib.Path) -> None:
+    run("-i", src, "-vf", f"scale={MP4_W}:{MP4_H}:flags=lanczos",
+        "-c:v", "libx264", "-preset", "slow", "-crf", "24",
+        "-pix_fmt", "yuv420p", "-movflags", "+faststart",
+        ASSETS / "koronis-demo.mp4")
+
+    # Two passes: build a palette from the whole clip, then map onto it. A single
+    # pass would quantise per frame and make flat panels crawl.
+    pal = tmp / "palette.png"
+    scale = f"scale={GIF_W}:-1:flags=lanczos"
+    run("-i", src, "-vf",
+        f"fps={GIF_FPS},{scale},palettegen=stats_mode=diff:max_colors={GIF_COLORS}", pal)
+    run("-i", src, "-i", pal, "-lavfi",
+        f"fps={GIF_FPS},{scale}[x];"
+        "[x][1:v]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle",
+        ASSETS / "koronis-demo.gif")
+
+    run("-ss", "6", "-i", src, "-frames:v", "1",
+        "-vf", f"scale={MP4_W}:{MP4_H}:flags=lanczos",
+        ASSETS / "koronis-demo-poster.png")
+
+
+def main() -> int:
+    if not INDEX.exists():
+        print("docs/index.html is missing - run  python site/build.py  first.")
+        return 1
+    if shutil.which("ffmpeg") is None:
+        print("ffmpeg is not on PATH; it is needed to encode the recording.")
+        return 1
+
+    with tempfile.TemporaryDirectory() as td:
+        tmp = pathlib.Path(td)
+        src = capture(tmp / "video")
+        encode(src, tmp)
+
+    sys.path.insert(0, str(ROOT))
+    from tests.test_demo_recording_is_current import write_stamp
+    write_stamp()
+
+    for name in ("koronis-demo.gif", "koronis-demo.mp4", "koronis-demo-poster.png"):
+        p = ASSETS / name
+        print(f"wrote {p}  ({p.stat().st_size / 1e6:.1f} MB)")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

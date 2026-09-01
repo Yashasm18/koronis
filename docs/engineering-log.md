@@ -135,6 +135,25 @@ Every defect below was surfaced by running experiments, not by reading code.
    4× and 16× and asserts the end states are identical down to the canvas pixel count. It
    reproduces the old behaviour when reverted.
 
+14. **The picture at the top of the README was the one thing no test read.** The demo
+   recording sat unchanged through four commits that re-ran the experiments behind it. It
+   showed an action ladder of ₹21,973 / ₹10,008 / ₹3,646 / ₹1,667 and a frozen threshold
+   of 0.6785 while `results/policy.json` had moved to ₹25,331 / ₹11,519 / ₹4,150 / ₹1,768
+   at threshold 0.9366 — so the first thing a reader saw contradicted the text beside it.
+   It also showed a replay panel with no speed control, because the control was added
+   afterwards. Every *number* in the README was covered by a test; the image asserting
+   those numbers was covered by nothing, because it is a binary. A stamp committed beside
+   the recording now hashes the two things a viewer can read off the frames — the contents
+   of `results/`, and the page's control surface — and a test fails when either moves.
+   Re-recording refreshes the stamp as its last step, so the two cannot drift apart.
+
+   The recorder had rotted the same way. It slowed the replay by throttling
+   `requestAnimationFrame`, which worked only while the replay advanced a fixed amount per
+   frame; defect 11 moved pacing onto the wall clock, after which throttling cut the frame
+   rate and nothing else. It is now in the repository as `site/record_demo.py` rather than
+   in an ignored scratch directory, uses the page's own 4× control, and waits for the
+   stream to drain instead of sleeping for a guessed duration.
+
 An inference benchmark reporting p50 1.78 ms was also discarded: it was measured while a
 training job ran on the same machine. The idle run is 0.91 ms.
 
