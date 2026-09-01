@@ -337,6 +337,56 @@ BIN began `b`, every campaign entity `c`, so they landed on two shards and nothi
 partitioned. With CRC32 the result above appeared. A test asserts no strategy puts a
 disproportionate share on one shard.
 
+### Recovering the edges a partition deletes
+
+BIN routing keeps precision and bleeds recall as shards multiply, because device and IP
+edges are cut when their endpoints land apart. That loss is not inherent to partitioning —
+only to insisting every event live in exactly one place. An event can be **copied** to the
+shard where its other relations would find company.
+
+The prediction, stated in [`eval/sharding.py`](../koronis/eval/sharding.py) before the run:
+entity frequencies are heavy-tailed, so most values appear once and can form no edge at
+all. Replicating only events whose device or IP actually recurs should restore most lost
+edges while copying a minority of traffic — and campaign entities, shared by construction,
+should be copied preferentially. If duplication instead ran away, the approach would be
+uneconomic and the generator's traffic would not be as heavy-tailed as it claims.
+
+`python -m koronis.cli replicate`, frozen model and threshold:
+
+| shards | recall, BIN only | recall, + replication | precision, BIN only | precision, + replication | events scored |
+|---:|---:|---:|---:|---:|---:|
+| 2 | 0.927 | **0.985** | 0.966 | 0.938 | 1.68× |
+| 4 | 0.812 | **0.995** | 0.964 | 0.858 | 2.15× |
+| 8 | 0.585 | **1.000** | 0.955 | 0.730 | 2.42× |
+| 16 | 0.453 | **0.995** | 0.948 | 0.583 | 2.56× |
+
+**The mechanism works, and works completely.** At 16 shards recall goes from **0.453 to
+0.995** — the campaign is fully recovered — for **2.56× the scoring work**. That the factor
+is 2.56 and not 16 is the heavy tail doing exactly what was predicted: only shared entities
+are worth copying, and most are not shared.
+
+**It is not free, and the cost is precision.** Replicating high-degree entities co-locates
+the *legitimate* dense clusters too, so false positives rise the same way they did under
+device routing. Priced with the project's own constants:
+
+| shards | BIN only | BIN + replication | random |
+|---:|---:|---:|---:|
+| 2 | ₹2,637 | ₹1,478 | ₹3,213 |
+| 4 | ₹5,955 | ₹2,786 | ₹5,529 |
+| 8 | ₹12,558 | ₹5,920 | ₹8,393 |
+| 16 | ₹16,387 | ₹11,546 | ₹10,487 |
+
+**Replication is the cheapest option at 2, 4 and 8 shards** — and 8 shards is about 9,500
+events/sec at the measured single-process rate, which is the range a large gateway's peak
+would actually sit in. **At 16 it stops winning:** plain random routing costs ₹10,487
+against replication's ₹11,546, and does it at 1× compute instead of 2.56×.
+
+**And nothing beats not partitioning.** The undivided stream costs ₹1,045. Every routing
+strategy at every shard count is worse than that, which is the honest summary of this whole
+line of work: sharding a coordination detector always costs something, replication buys back
+most of it in the range that matters, and the right first move is a bigger window per shard
+rather than more shards.
+
 ### Making consolidation causal
 
 The detector was always strictly online — `StreamingKoronis.push` reproduces batch scores

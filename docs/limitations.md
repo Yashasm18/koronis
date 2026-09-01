@@ -52,10 +52,13 @@ and a reviewer should not have to guess where the seams are.
   batch reference, and it is the one using the future — see
   [Evaluation → online consolidation](evaluation.md#making-consolidation-causal) for what
   the difference costs.
-- **Sharding costs accuracy, and the cost depends on the routing key.** Measured in
+- **Sharding costs accuracy, and no routing makes it free.** Measured in
   [Evaluation](evaluation.md#does-the-graph-survive-being-split-across-machines): a
-  partitioned graph loses edges, and which key you route on decides whether you lose
-  recall or precision. No routing key makes it free.
+  partitioned graph loses edges, and the routing key decides whether you lose recall or
+  precision. [Replication recovers most of it](evaluation.md#recovering-the-edges-a-partition-deletes)
+  at 2.6× the scoring work and is the cheapest option up to eight shards — but the
+  undivided stream still beats every partitioned configuration, so horizontal scale is a
+  cost to be justified rather than a free lever.
 - **No adaptation loop.** The model is fitted once and frozen, which is what makes the
   hold-out meaningful here and is *not* what a deployment wants. Attacks move. A
   production version needs a retraining cadence, analyst dispositions fed back as labels,

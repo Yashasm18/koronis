@@ -62,3 +62,56 @@ def test_routing_is_stable_across_calls(stream):
     a = assign_shards(stream, 8, "bin_id")
     b = assign_shards(stream, 8, "bin_id")
     assert (a == b).all()
+
+
+# ── replication ─────────────────────────────────────────────────────────────
+from koronis.eval.sharding import assign_with_replication  # noqa: E402
+
+
+def test_one_shard_replication_is_the_undivided_stream(stream):
+    b = assign_with_replication(stream, 1, "bin_id")
+    assert len(b) == 1 and b[0] == list(range(len(stream)))
+
+
+@pytest.mark.parametrize("n", [2, 4, 8])
+def test_no_event_is_lost_by_replication(stream, n):
+    """Every event must still be scored somewhere; replication adds copies, it
+    must never drop an original."""
+    placed = set()
+    for rows in assign_with_replication(stream, n, "bin_id"):
+        placed |= set(rows)
+    assert placed == set(range(len(stream)))
+
+
+@pytest.mark.parametrize("n", [4, 8])
+def test_replication_recovers_edges_the_partition_cut(stream, n):
+    from koronis.eval.sharding import edges_preserved
+    plain = edges_preserved(stream, assign_shards(stream, n, "bin_id"),
+                            window_s=1200.0)["all"]
+    buckets = assign_with_replication(stream, n, "bin_id")
+    where = [set() for _ in range(len(stream))]
+    for si, rows in enumerate(buckets):
+        for r in rows:
+            where[r].add(si)
+    from koronis.graph.build import build_edges
+    whole = build_edges(stream, window_s=1200.0)
+    kept = tot = 0
+    for rel in RELATIONS:
+        src, dst = whole[rel][0], whole[rel][1]
+        tot += len(src)
+        kept += sum(1 for a, b in zip(src, dst) if where[a] & where[b])
+    assert kept / max(tot, 1) > plain, "replication did not recover any edges"
+
+
+def test_a_higher_degree_bar_copies_less(stream):
+    """min_degree is the fidelity/compute knob; it has to actually work."""
+    def dup(d):
+        return sum(len(b) for b in
+                   assign_with_replication(stream, 8, "bin_id", min_degree=d)) / len(stream)
+    assert dup(2) > dup(8) >= 1.0
+
+
+def test_replication_never_costs_less_than_one_copy_per_event(stream):
+    for d in (2, 4, 8):
+        b = assign_with_replication(stream, 8, "bin_id", min_degree=d)
+        assert sum(len(x) for x in b) >= len(stream)

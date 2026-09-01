@@ -10,7 +10,7 @@ python -m venv .venv
 .venv/bin/pip install -r requirements.txt -r requirements-dev.txt
 .venv/bin/python -m playwright install chromium     # for the site-render tests
 .venv/bin/python site/build.py                      # the site tests need docs/index.html
-.venv/bin/python -m pytest tests/ -q                # 155 tests, ~1–2 min
+.venv/bin/python -m pytest tests/ -q                # 163 tests, ~1–2 min
 ```
 
 `requirements-dev.txt` is test-only. The suite runs without it — the tests that
