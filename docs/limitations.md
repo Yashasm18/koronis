@@ -55,10 +55,12 @@ and a reviewer should not have to guess where the seams are.
 - **Sharding costs accuracy, and no routing makes it free.** Measured in
   [Evaluation](evaluation.md#does-the-graph-survive-being-split-across-machines): a
   partitioned graph loses edges, and the routing key decides whether you lose recall or
-  precision. [Replication recovers most of it](evaluation.md#recovering-the-edges-a-partition-deletes)
-  at 2.6× the scoring work and is the cheapest option up to eight shards — but the
-  undivided stream still beats every partitioned configuration, so horizontal scale is a
-  cost to be justified rather than a free lever.
+  precision. [Replication recovers it](evaluation.md#recovering-the-edges-a-partition-deletes) at
+  under 3× the scoring work and is the cheapest routing at every shard count — but the
+  undivided stream still beats every partitioned configuration
+  (₹645 against
+  ₹3,212 at sixteen
+  shards), so horizontal scale is a cost to be justified rather than a free lever.
 - **No adaptation loop.** The model is fitted once and frozen, which is what makes the
   hold-out meaningful here and is *not* what a deployment wants. Attacks move. A
   production version needs a retraining cadence, analyst dispositions fed back as labels,

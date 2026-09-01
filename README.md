@@ -193,8 +193,8 @@ card id per attempt.
 graph deletes edges. Routing by BIN preserves the relation that
 [carries the signal](docs/evaluation.md#which-entity-type-carries-the-signal); replicating
 the events whose device or IP actually recurs
-[restores recall from 0.59 to 1.00 at eight shards](docs/evaluation.md#recovering-the-edges-a-partition-deletes),
-for 2.4× the scoring work. Reported honestly: **every partitioned configuration is worse
+[restores recall from 0.72 to 0.99 at eight shards](docs/evaluation.md#recovering-the-edges-a-partition-deletes),
+for 2.421× the scoring work. Reported honestly: **every partitioned configuration is worse
 than not partitioning at all**, so more workers is a cost to justify, not a free lever.
 
 **What each recommendation maps to.** `monitor` is no action. `rate_limit` throttles the
@@ -253,8 +253,8 @@ python site/build.py                            # results/ -> docs/index.html
 | Does it survive a different merchant? | flagged on all three shifted profiles; the guardrail is **experimental** | [Evaluation](docs/evaluation.md#traffic-profile-transfer-stress-test) |
 | Can it run online? | 0.91 ms p50; streaming reproduces batch scores exactly | [Evaluation](docs/evaluation.md#streaming-and-inference-latency) |
 | Is the *whole* pipeline causal? | yes — consolidation too, via a sliding count-min sketch in fixed memory | [Evaluation](docs/evaluation.md#making-consolidation-causal) |
-| Does it survive being split across machines? | measured — and PR-AUC and rupees rank the routing keys **oppositely** | [Evaluation](docs/evaluation.md#does-the-graph-survive-being-split-across-machines) |
-| Can the loss be recovered? | yes — replication restores recall 0.45 → 0.995 at 2.6× compute, and wins up to 8 shards | [Evaluation](docs/evaluation.md#recovering-the-edges-a-partition-deletes) |
+| Does it survive being split across machines? | measured — and PR-AUC and rupees disagree about which routing is better | [Evaluation](docs/evaluation.md#does-the-graph-survive-being-split-across-machines) |
+| Can the loss be recovered? | yes — replication restores recall 0.65 → 0.99 and is the cheapest routing at every shard count | [Evaluation](docs/evaluation.md#recovering-the-edges-a-partition-deletes) |
 | What broke? | 9 defects, **4 retracted claims** | [Engineering log](docs/engineering-log.md) |
 
 ## Limitations

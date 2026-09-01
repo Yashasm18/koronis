@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from koronis.data.schema import EVENT_COLUMNS, RELATIONS
+from koronis.data.schema import RELATIONS
 from koronis.eval.aperture import build_split_stream, compare_apertures
 
 

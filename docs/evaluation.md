@@ -270,10 +270,10 @@ one is the whole point of the exercise.
 
 ### Does the graph survive being split across machines?
 
-Throughput is not the hard part — per-event cost is already constant in stream length, so
-more traffic is more processes. The hard part is that **partitioning a graph deletes
-edges**: if one shard holds a device and another holds an IP that co-occurs with it, that
-edge never forms. Sharding is a modelling decision, not an infrastructure detail.
+Throughput is not the hard part — per-event cost is constant in stream length, so more
+traffic is more workers. The hard part is that **partitioning a graph deletes edges**: route
+a device to one shard and a co-occurring IP to another and that edge never forms. Sharding
+is a modelling decision, not an infrastructure detail.
 
 Events are routed by hashing a field, so **the field you route on is the one relation
 preserved perfectly** and every other survives only by collision. The prediction stated in
@@ -285,52 +285,47 @@ BIN-routing should hold up best and random should decay fastest.
 
 | shards | PR-AUC random | PR-AUC bin | PR-AUC device | ₹ random | ₹ bin | ₹ device |
 |---:|---:|---:|---:|---:|---:|---:|
-| 1 | 0.993 | 0.993 | 0.993 | ₹1,125 | ₹1,125 | ₹1,125 |
-| 2 | 0.967 | 0.979 | 0.983 | ₹3,135 | ₹3,056 | ₹2,805 |
-| 4 | 0.913 | 0.956 | 0.971 | ₹5,072 | ₹6,560 | ₹5,278 |
-| 8 | 0.834 | 0.933 | 0.955 | ₹7,159 | ₹10,754 | ₹9,852 |
-| 16 | 0.720 | 0.921 | 0.941 | ₹8,973 | ₹13,594 | ₹14,379 |
+| 1 | 0.999 | 0.999 | 0.999 | ₹645 | ₹645 | ₹645 |
+| 2 | 0.993 | 0.996 | 0.997 | ₹1,676 | ₹1,740 | ₹1,372 |
+| 4 | 0.958 | 0.991 | 0.988 | ₹3,592 | ₹4,262 | ₹2,558 |
+| 8 | 0.895 | 0.973 | 0.978 | ₹6,628 | ₹8,423 | ₹4,711 |
+| 16 | 0.800 | 0.962 | 0.962 | ₹9,198 | ₹10,686 | ₹7,551 |
 
-**Half right.** Entity routing does beat random decisively on PR-AUC — 0.921
-and 0.941 against 0.720 at 16 shards. But BIN did
-*not* beat device, so the specific prediction is wrong.
+**Entity routing beats random decisively, and the specific prediction was still wrong.**
+At 16 shards both entity keys hold 0.962 against random's
+0.800 — but BIN does not beat device, so the reason given for
+preferring BIN does not survive.
 
 **The two entity keys fail in opposite directions, which PR-AUC hides.** At 16 shards:
 
-| routing | precision | recall | false positives | missed |
-|---|---:|---:|---:|---:|
-| BIN | **0.937** | 0.555 | **15** | 178 |
-| device | 0.529 | **0.993** | 354 | **3** |
+| routing | precision | recall | false positives |
+|---|---:|---:|---:|
+| BIN | **0.970** | 0.645 | **8** |
+| device | 0.691 | **0.983** | 176 |
 
-BIN-routing cuts the campaign into fragments — device edges drop to
-9% — so recall falls, but every fragment that fires is
-genuinely coordinated and false positives actually go *below* the unsharded run. Device
-routing co-locates the heavy legitimate device reuse in background traffic, so recall
-survives and precision collapses to 0.529.
+BIN-routing cuts the campaign into fragments, so recall falls to 0.645 —
+but every fragment that fires is genuinely coordinated, and false positives stay at
+8, barely above the undivided run. Device routing
+co-locates the heavy legitimate device reuse in background traffic, so recall survives and
+precision collapses.
 
-**Priced in rupees, the ranking inverts.** Under this project's own declared constants — a
-missed attempt costs an authorisation fee, a false alert costs checkout friction —
-**random routing is the cheapest option at 4, 8 and 16 shards despite having by far the
-worst PR-AUC.** Keeping recall is worth more than keeping precision at these prices, and a
-ranking metric cannot see that.
+**And the two metrics disagree about which is better.** BIN has far the better PR-AUC
+(0.962 against 0.800) and is the more
+expensive of the two (₹10,686 against
+₹9,198), because at these prices a missed attempt
+costs more than a false alert and BIN routing misses the most. A ranking metric cannot see
+that. Reported as PR-AUC alone, BIN would look like the clear choice; priced, it is the
+worst of the three.
 
-That is the thesis of this repo landing on its own experiment: *decide in the currency you
-actually pay in.* Had this been reported as PR-AUC only, the recommendation would have been
-the opposite of the priced one.
+**What is unambiguous: sharding costs accuracy whichever key you pick.**
+₹645 undivided against
+₹7,551 for the best 16-shard option.
 
-**What it does not license.** The pricing is per event, while the deployed path consolidates
-alerts into incidents before acting — so it charges device-routing for 354
-separate false alerts that consolidation would collapse into a handful of incidents. Read
-the rupee column as evidence that the metrics disagree, not as a settled recommendation.
-The one unambiguous finding is that **sharding costs accuracy whichever key you pick**:
-₹1,125 undivided against ₹8,973 at the best 16-shard
-option.
-
-**A defect this surfaced.** The first run reported entity routing as completely free —
-flat PR-AUC at every shard count. The tell was `largest_shard_share = 0.9375` no matter how
-many shards were requested. Routing hashed ids with `int.from_bytes(..., "little")`, and
-that value modulo a power of two depends only on the *first character*: every background
-BIN began `b`, every campaign entity `c`, so they landed on two shards and nothing was
+**A defect this surfaced.** The first run reported entity routing as completely free — flat
+PR-AUC at every shard count. The tell was `largest_shard_share = 0.9375` no matter how many
+shards were requested. Routing hashed ids with `int.from_bytes(..., "little")`, and that
+value modulo a power of two depends only on the *first character*: every background BIN
+began `b`, every campaign entity `c`, so they landed on two shards and nothing was
 partitioned. With CRC32 the result above appeared. A test asserts no strategy puts a
 disproportionate share on one shard.
 
@@ -342,47 +337,46 @@ only to insisting every event live in exactly one place. An event can be **copie
 shard where its other relations would find company.
 
 The prediction, stated in [`eval/sharding.py`](../koronis/eval/sharding.py) before the run:
-entity frequencies are heavy-tailed, so most values appear once and can form no edge at
-all. Replicating only events whose device or IP actually recurs should restore most lost
-edges while copying a minority of traffic — and campaign entities, shared by construction,
-should be copied preferentially. If duplication instead ran away, the approach would be
-uneconomic and the generator's traffic would not be as heavy-tailed as it claims.
+entity frequencies are heavy-tailed, so most values appear once and can form no edge at all.
+Replicating only events whose device or IP actually recurs should restore most lost edges
+while copying a minority of traffic — and campaign entities, shared by construction, should
+be copied preferentially.
 
-`python -m koronis.cli replicate`, frozen model and threshold:
+`python -m koronis.cli replicate`, frozen model and threshold. `d` is the degree bar: an
+event is copied only if the value it shares occurs at least `d` times.
 
-| shards | recall, BIN only | recall, + replication | precision, BIN only | precision, + replication | events scored |
-|---:|---:|---:|---:|---:|---:|
-| 2 | 0.927 | **0.985** | 0.966 | 0.938 | 1.68× |
-| 4 | 0.812 | **0.995** | 0.964 | 0.858 | 2.15× |
-| 8 | 0.585 | **1.000** | 0.955 | 0.730 | 2.42× |
-| 16 | 0.453 | **0.995** | 0.948 | 0.583 | 2.56× |
+| shards | recall, BIN only | recall, + repl | ₹ BIN only | ₹ + repl (d≥2) | ₹ + repl (d≥4) | events scored |
+|---:|---:|---:|---:|---:|---:|---:|
+| 2 | 0.950 | **0.988** | ₹1,740 | ₹725 | ₹805 | 1.675× / 1.468× |
+| 4 | 0.865 | **0.988** | ₹4,262 | ₹1,445 | ₹1,365 | 2.147× / 1.747× |
+| 8 | 0.723 | **0.990** | ₹8,423 | ₹2,772 | ₹2,412 | 2.421× / 1.898× |
+| 16 | 0.645 | **0.990** | ₹10,686 | ₹4,532 | ₹3,212 | 2.564× / 1.976× |
 
-**The mechanism works, and works completely.** At 16 shards recall goes from **0.453 to
-0.995** — the campaign is fully recovered — for **2.56× the scoring work**. That the factor
-is 2.56 and not 16 is the heavy tail doing exactly what was predicted: only shared entities
-are worth copying, and most are not shared.
+**The mechanism works, and works completely.** At 16 shards recall goes from
+0.645 to
+**0.990** — the campaign is fully
+recovered — for 2.564× the scoring work.
+That the factor is under three rather than sixteen is the heavy tail doing exactly what was
+predicted: only shared entities are worth copying, and most are not.
 
-**It is not free, and the cost is precision.** Replicating high-degree entities co-locates
-the *legitimate* dense clusters too, so false positives rise the same way they did under
-device routing. Priced with the project's own constants:
+**Replication is the cheapest routing at every shard count**, beating BIN alone, random and
+device routing alike. It costs precision — copying high-degree entities co-locates the
+legitimate dense clusters too — but at these prices recovering the missed attempts is worth
+more than the extra alerts.
 
-| shards | BIN only | BIN + replication | random |
-|---:|---:|---:|---:|
-| 2 | ₹2,637 | ₹1,478 | ₹3,213 |
-| 4 | ₹5,955 | ₹2,786 | ₹5,529 |
-| 8 | ₹12,558 | ₹5,920 | ₹8,393 |
-| 16 | ₹16,387 | ₹11,546 | ₹10,487 |
+**The stricter degree bar is better at scale, which was not predicted.** `d≥4` copies less
+(1.976× against
+2.564× at 16 shards) *and* costs less
+(₹3,212 against
+₹4,532). Copying
+entities shared by only two or three events buys edges that are mostly noise, and pays for
+them twice — in compute and in false positives.
 
-**Replication is the cheapest option at 2, 4 and 8 shards** — and 8 shards is about 9,500
-events/sec at the measured single-process rate, which is the range a large gateway's peak
-would actually sit in. **At 16 it stops winning:** plain random routing costs ₹10,487
-against replication's ₹11,546, and does it at 1× compute instead of 2.56×.
-
-**And nothing beats not partitioning.** The undivided stream costs ₹1,045. Every routing
-strategy at every shard count is worse than that, which is the honest summary of this whole
-line of work: sharding a coordination detector always costs something, replication buys back
-most of it in the range that matters, and the right first move is a bigger window per shard
-rather than more shards.
+**And nothing beats not partitioning.** The undivided stream costs
+₹645; every routing strategy at every shard count is
+worse. That is the honest summary of this line of work: sharding a coordination detector
+always costs something, replication buys back most of it, and the right first move is a
+bigger window per worker rather than more workers.
 
 ### Making consolidation causal
 

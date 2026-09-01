@@ -5,7 +5,6 @@ decisions depend on traffic that had not happened yet. These hold the streaming
 replacement to the property the batch version cannot have.
 """
 import numpy as np
-import pandas as pd
 import pytest
 
 from koronis.data.background import load_background

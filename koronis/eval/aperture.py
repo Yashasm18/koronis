@@ -26,7 +26,7 @@ import pandas as pd
 
 from ..data.background import load_background
 from ..data.campaigns import inject
-from ..data.schema import CampaignSpec, EVENT_COLUMNS, RELATIONS
+from ..data.schema import CampaignSpec, EVENT_COLUMNS
 
 # Entity ids from the bootstrap sampler are plain ("d17", "i4"), so two
 # merchant streams built with different seeds would still collide on them and

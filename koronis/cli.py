@@ -412,23 +412,22 @@ def select(n_seeds: int = 5) -> pd.DataFrame:
             m = KoronisDetector(seed=seed, window_s=WINDOW_S,
                                 use_gate=gate, relations=rels)
             m.fit(train, epochs=60)
-            if True:
-                thr, _ = cost_optimal_threshold(_raw(m.score_events(calib_thr)), y_a,
-                                                COST_PER_ATTEMPT_INR,
-                                                COST_PER_FALSE_BLOCK_INR)
-                sel = _raw(m.score_events(calib_sel))
-                sc = _raw(m.score_events(test))
-                fired = sc >= thr
-                rows.append({
-                    "seed": seed, "variant": name,
-                    "select_cost_inr": round(_decision_cost(y_b, sel, thr), 1),
-                    "select_pr_auc": round(float(average_precision_score(y_b, sel)), 4),
-                    "test_cost_inr": round(_decision_cost(y_t, sc, thr), 1),
-                    "test_pr_auc": round(float(average_precision_score(y_t, sc)), 4),
-                    "test_precision": round(float(precision_score(y_t, fired, zero_division=0)), 4),
-                    "test_recall": round(float(recall_score(y_t, fired, zero_division=0)), 4),
-                    "test_false_positives": int((fired & (y_t == 0)).sum()),
-                })
+            thr, _ = cost_optimal_threshold(_raw(m.score_events(calib_thr)), y_a,
+                                            COST_PER_ATTEMPT_INR,
+                                            COST_PER_FALSE_BLOCK_INR)
+            sel = _raw(m.score_events(calib_sel))
+            sc = _raw(m.score_events(test))
+            fired = sc >= thr
+            rows.append({
+                "seed": seed, "variant": name,
+                "select_cost_inr": round(_decision_cost(y_b, sel, thr), 1),
+                "select_pr_auc": round(float(average_precision_score(y_b, sel)), 4),
+                "test_cost_inr": round(_decision_cost(y_t, sc, thr), 1),
+                "test_pr_auc": round(float(average_precision_score(y_t, sc)), 4),
+                "test_precision": round(float(precision_score(y_t, fired, zero_division=0)), 4),
+                "test_recall": round(float(recall_score(y_t, fired, zero_division=0)), 4),
+                "test_false_positives": int((fired & (y_t == 0)).sum()),
+            })
 
     allr = pd.DataFrame(rows)
     RESULTS.mkdir(exist_ok=True)
@@ -964,19 +963,18 @@ def relations(n_seeds: int = 5) -> pd.DataFrame:
             m = KoronisDetector(seed=seed, window_s=WINDOW_S, relations=rels,
                                 use_gate=True)
             m.fit(train, epochs=60)
-            if True:
-                thr, _ = cost_optimal_threshold(_raw(m.score_events(calib)), y_cal,
-                                                COST_PER_ATTEMPT_INR,
-                                                COST_PER_FALSE_BLOCK_INR)
-                sc = _raw(m.score_events(test))
-                fired = sc >= thr
-                rows.append({
-                    "seed": seed, "variant": name, "n_relations": len(rels),
-                    "pr_auc": round(float(average_precision_score(y, sc)), 4),
-                    "precision": round(float(precision_score(y, fired, zero_division=0)), 4),
-                    "recall": round(float(recall_score(y, fired, zero_division=0)), 4),
-                    "false_positives": int((fired & (y == 0)).sum()),
-                })
+            thr, _ = cost_optimal_threshold(_raw(m.score_events(calib)), y_cal,
+                                            COST_PER_ATTEMPT_INR,
+                                            COST_PER_FALSE_BLOCK_INR)
+            sc = _raw(m.score_events(test))
+            fired = sc >= thr
+            rows.append({
+                "seed": seed, "variant": name, "n_relations": len(rels),
+                "pr_auc": round(float(average_precision_score(y, sc)), 4),
+                "precision": round(float(precision_score(y, fired, zero_division=0)), 4),
+                "recall": round(float(recall_score(y, fired, zero_division=0)), 4),
+                "false_positives": int((fired & (y == 0)).sum()),
+            })
 
     allr = pd.DataFrame(rows)
     RESULTS.mkdir(exist_ok=True)

@@ -25,5 +25,5 @@ import os
 # Set OMP_NUM_THREADS yourself to override the pinning.
 os.environ.setdefault("OMP_NUM_THREADS", "1")
 
-import lightgbm as _lightgbm  # noqa: E402,F401  (must precede torch)
-import torch as _torch  # noqa: E402,F401
+import lightgbm as _lightgbm  # noqa: F401  (import order is the point)  # noqa: E402,F401  (must precede torch)
+import torch as _torch  # noqa: F401  (import order is the point)  # noqa: E402,F401

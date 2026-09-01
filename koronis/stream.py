@@ -75,7 +75,6 @@ class StreamingKoronis:
             # computed from events older still - which is why this reproduces
             # the batch pass exactly at any depth rather than approximately.
             h = x
-            below = self._x
             hidden = []
             for layer, cache in zip(self.net.layers, [self._x] + self._h):
                 h = layer.forward_single(h, [self._stack(n, cache) for n in neighbours])
