@@ -13,6 +13,7 @@
     python -m koronis.cli aperture    # merchant view vs gateway view
     python -m koronis.cli architecture # do the gate and the attention earn their place
     python -m koronis.cli online      # online consolidation vs the batch grouping
+    python -m koronis.cli sharding    # does the graph survive being split across machines
 """
 import json
 import sys
@@ -27,6 +28,7 @@ from .data.background import load_background
 from .data.campaigns import inject
 from .data.schema import CampaignSpec
 from .eval.aperture import compare_apertures
+from .eval.sharding import sweep as shard_sweep
 from .eval.calibration import cost_optimal_threshold, expected_calibration_error
 from .eval.cost import COST_PER_ATTEMPT_INR, COST_PER_FALSE_BLOCK_INR
 from .eval.latency import detection_times, exposure, latency_curve, money_prevented
@@ -355,6 +357,38 @@ def mechanism(n_seeds: int = 5) -> pd.DataFrame:
     print(f"\nmechanism ablation, {n_seeds} trials, medians\n")
     print(summary.to_string(index=False))
     return summary
+
+
+SHARD_COUNTS = (1, 2, 4, 8, 16)
+
+
+def sharding() -> pd.DataFrame:
+    """Detection quality against shard count, by routing key.
+
+    The prediction is stated in eval/sharding.py before this runs, and it is
+    derived from the per-relation ablation rather than from intuition: BIN
+    carries the signal, so routing by BIN should hold up while routing at
+    random should not.
+    """
+    train = _train_set(0)
+    _, _, kor = _fit_all(train)
+    calib = _calibration_set(2)
+    thr, _ = cost_optimal_threshold(_raw(kor.score_events(calib)),
+                                    calib["label"].to_numpy(),
+                                    COST_PER_ATTEMPT_INR, COST_PER_FALSE_BLOCK_INR)
+    test = _dataset(1, TEST_K, TEST_CAMO)
+    df = shard_sweep(kor, test, thr, list(SHARD_COUNTS), window_s=WINDOW_S)
+
+    RESULTS.mkdir(exist_ok=True)
+    df.to_csv(RESULTS / "sharding.csv", index=False)
+    wide = df.pivot(index="n_shards", columns="strategy", values="pr_auc")
+    wide.to_csv(RESULTS / "sharding_pr_auc.csv")
+
+    print("\nsharding sweep, frozen model and threshold\n")
+    print(df.to_string(index=False))
+    print("\nPR-AUC by routing key:")
+    print(wide.to_string())
+    return df
 
 
 def online(n_streams: int = 6) -> pd.DataFrame:
@@ -1123,4 +1157,5 @@ if __name__ == "__main__":
      "seeds": seeds, "replay": replay, "benchmark": benchmark,
      "mechanism": mechanism, "incidents": incidents, "drift": drift,
      "relations": relations, "aperture": aperture,
-     "architecture": architecture, "online": online}[cmd]()
+     "architecture": architecture, "online": online,
+     "sharding": sharding}[cmd]()

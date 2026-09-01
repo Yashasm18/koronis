@@ -209,6 +209,72 @@ On the held-out stream Koronis alerts on the campaign's opening attempt — but 
 is a declined authorisation with no campaign neighbours yet, weak on its own; the graph is
 what makes the following attempts actionable.
 
+### Does the graph survive being split across machines?
+
+Throughput is not the hard part — per-event cost is already constant in stream length, so
+more traffic is more processes. The hard part is that **partitioning a graph deletes
+edges**: if one shard holds a device and another holds an IP that co-occurs with it, that
+edge never forms. Sharding is a modelling decision, not an infrastructure detail.
+
+Events are routed by hashing a field, so **the field you route on is the one relation
+preserved perfectly** and every other survives only by collision. The prediction stated in
+[`eval/sharding.py`](../koronis/eval/sharding.py) before the run came from the
+[per-relation ablation](#which-entity-type-carries-the-signal): BIN carries the signal, so
+BIN-routing should hold up best and random should decay fastest.
+
+`python -m koronis.cli sharding`, frozen model and threshold, only the partition varying:
+
+| shards | PR-AUC random | PR-AUC bin | PR-AUC device | ₹ random | ₹ bin | ₹ device |
+|---:|---:|---:|---:|---:|---:|---:|
+| 1 | 0.993 | 0.993 | 0.993 | ₹1,125 | ₹1,125 | ₹1,125 |
+| 2 | 0.967 | 0.979 | 0.983 | ₹3,135 | ₹3,056 | ₹2,805 |
+| 4 | 0.913 | 0.956 | 0.971 | ₹5,072 | ₹6,560 | ₹5,278 |
+| 8 | 0.834 | 0.933 | 0.955 | ₹7,159 | ₹10,754 | ₹9,852 |
+| 16 | 0.720 | 0.921 | 0.941 | ₹8,973 | ₹13,594 | ₹14,379 |
+
+**Half right.** Entity routing does beat random decisively on PR-AUC — 0.921
+and 0.941 against 0.720 at 16 shards. But BIN did
+*not* beat device, so the specific prediction is wrong.
+
+**The two entity keys fail in opposite directions, which PR-AUC hides.** At 16 shards:
+
+| routing | precision | recall | false positives | missed |
+|---|---:|---:|---:|---:|
+| BIN | **0.937** | 0.555 | **15** | 178 |
+| device | 0.529 | **0.993** | 354 | **3** |
+
+BIN-routing cuts the campaign into fragments — device edges drop to
+9% — so recall falls, but every fragment that fires is
+genuinely coordinated and false positives actually go *below* the unsharded run. Device
+routing co-locates the heavy legitimate device reuse in background traffic, so recall
+survives and precision collapses to 0.529.
+
+**Priced in rupees, the ranking inverts.** Under this project's own declared constants — a
+missed attempt costs an authorisation fee, a false alert costs checkout friction —
+**random routing is the cheapest option at 4, 8 and 16 shards despite having by far the
+worst PR-AUC.** Keeping recall is worth more than keeping precision at these prices, and a
+ranking metric cannot see that.
+
+That is the thesis of this repo landing on its own experiment: *decide in the currency you
+actually pay in.* Had this been reported as PR-AUC only, the recommendation would have been
+the opposite of the priced one.
+
+**What it does not license.** The pricing is per event, while the deployed path consolidates
+alerts into incidents before acting — so it charges device-routing for 354
+separate false alerts that consolidation would collapse into a handful of incidents. Read
+the rupee column as evidence that the metrics disagree, not as a settled recommendation.
+The one unambiguous finding is that **sharding costs accuracy whichever key you pick**:
+₹1,125 undivided against ₹8,973 at the best 16-shard
+option.
+
+**A defect this surfaced.** The first run reported entity routing as completely free —
+flat PR-AUC at every shard count. The tell was `largest_shard_share = 0.9375` no matter how
+many shards were requested. Routing hashed ids with `int.from_bytes(..., "little")`, and
+that value modulo a power of two depends only on the *first character*: every background
+BIN began `b`, every campaign entity `c`, so they landed on two shards and nothing was
+partitioned. With CRC32 the result above appeared. A test asserts no strategy puts a
+disproportionate share on one shard.
+
 ### Making consolidation causal
 
 The detector was always strictly online — `StreamingKoronis.push` reproduces batch scores
