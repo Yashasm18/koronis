@@ -1,0 +1,4 @@
+# Test-only dependencies. The suite runs without these - tests that need them
+# skip - but CI installs them so the collected test count is the same
+# everywhere, and so the demo page is actually exercised rather than assumed.
+playwright==1.62.0

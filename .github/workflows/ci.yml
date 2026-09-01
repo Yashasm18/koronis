@@ -31,7 +31,16 @@ jobs:
         run: pip install torch==2.13.0 --index-url https://download.pytorch.org/whl/cpu
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: pip install -r requirements.txt -r requirements-dev.txt
+
+      # The site-render tests drive the built demo page in a real browser.
+      # Without this they skip, which also makes the collected test count
+      # differ from a developer machine and trips the badge check.
+      - name: Install Chromium for the site tests
+        run: python -m playwright install --with-deps chromium
+
+      - name: Build the demo page
+        run: python site/build.py
 
       - name: Run test suite
         run: python -m pytest tests/ -q

@@ -14,22 +14,36 @@ ROOT = Path(__file__).resolve().parents[1]
 README = (ROOT / "README.md").read_text()
 
 
-def _collected_test_count() -> int:
-    """Ask pytest itself, in a subprocess, so this cannot count itself wrong."""
+def _collected_test_count() -> tuple[int, str]:
+    """Ask pytest itself, in a subprocess, so this cannot count itself wrong.
+
+    Also reports anything skipped at COLLECTION time. A module guarded by
+    `importorskip` contributes no tests when its dependency is absent, so the
+    count legitimately differs between a machine with the optional test
+    dependencies and one without - which is exactly how this check once failed
+    in CI while passing locally. requirements-dev.txt exists to keep the two
+    environments the same; the note below says so when they diverge.
+    """
     out = subprocess.run(
         [sys.executable, "-m", "pytest", "tests/", "-q", "--collect-only"],
         cwd=ROOT, capture_output=True, text=True).stdout
     m = re.search(r"(\d+) tests? collected", out)
     assert m, f"could not read a collection count from pytest:\n{out[-500:]}"
-    return int(m.group(1))
+    skipped = re.search(r"(\d+) skipped", out)
+    note = ""
+    if skipped:
+        note = (f" ({skipped.group(1)} module(s) skipped at collection - install "
+                f"requirements-dev.txt so optional tests are collected)")
+    return int(m.group(1)), note
 
 
 def test_tests_badge_matches_the_suite():
     m = re.search(r"badge/tests-(\d+)%20passing", README)
     assert m, "the tests badge is missing from the README"
-    claimed, actual = int(m.group(1)), _collected_test_count()
+    claimed = int(m.group(1))
+    actual, note = _collected_test_count()
     assert claimed == actual, (
-        f"README badge claims {claimed} tests, pytest collects {actual}. "
+        f"README badge claims {claimed} tests, pytest collects {actual}{note}. "
         f"Update the badge in README.md.")
 
 

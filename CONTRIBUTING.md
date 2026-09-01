@@ -7,9 +7,15 @@ following them keeps the results trustworthy.
 
 ```bash
 python -m venv .venv
-.venv/bin/pip install -r requirements.txt
-.venv/bin/python -m pytest tests/ -q          # 153 tests, ~1–2 min
+.venv/bin/pip install -r requirements.txt -r requirements-dev.txt
+.venv/bin/python -m playwright install chromium     # for the site-render tests
+.venv/bin/python site/build.py                      # the site tests need docs/index.html
+.venv/bin/python -m pytest tests/ -q                # 153 tests, ~1–2 min
 ```
+
+`requirements-dev.txt` is test-only. The suite runs without it — the tests that
+drive the demo page skip — but then fewer tests are collected than CI collects,
+and the test-count badge check will say so.
 
 Python 3.14 is the tested version (see [`.github/workflows/ci.yml`](.github/workflows/ci.yml)).
 
