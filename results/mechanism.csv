@@ -1,5 +1,5 @@
 variant,n_trials,pr_auc_median,precision_median,recall_median,false_positives_median,detect_s_median,detected_rate
-koronis_full,5,0.9892,0.9417,0.9675,24.0,0.0,1.0
-no_edges,5,0.333,0.451,0.955,465.0,0.0,1.0
-no_approved,5,0.7258,0.7458,0.6475,91.0,67.1,1.0
-no_edges_no_approved,5,0.0614,0.0,0.0,0.0,,0.0
+koronis_full,5,0.9968,0.9635,0.99,15.0,0.0,1.0
+no_edges,5,0.3478,0.4515,0.9525,464.0,0.0,1.0
+no_approved,5,0.8171,0.8399,0.695,53.0,66.6,1.0
+no_edges_no_approved,5,0.0615,0.0,0.0,0.0,,0.0

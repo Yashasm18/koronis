@@ -3,7 +3,7 @@
 > Detection of distributed card-testing campaigns that per-entity velocity rules cannot see at any threshold.
 
 [![CI](https://github.com/Yashasm18/koronis/actions/workflows/ci.yml/badge.svg)](https://github.com/Yashasm18/koronis/actions/workflows/ci.yml)
-[![tests](https://img.shields.io/badge/tests-131%20passing-2ea44f)](tests/)
+[![tests](https://img.shields.io/badge/tests-149%20passing-2ea44f)](tests/)
 [![python](https://img.shields.io/badge/python-3.14-3776ab)](https://www.python.org/)
 [![license: MIT](https://img.shields.io/badge/license-MIT-yellow)](LICENSE)
 [![graph libs](https://img.shields.io/badge/graph%20libraries-none-8a3ffc)](koronis/models/layers.py)
@@ -33,7 +33,7 @@ detection is possible at all** — stated as arithmetic, then tested.
 
 ```bash
 python -m venv .venv && .venv/bin/pip install -r requirements.txt
-.venv/bin/python -m pytest tests/ -q          # 131 tests, ~1-2 min
+.venv/bin/python -m pytest tests/ -q          # 149 tests, ~1-2 min
 .venv/bin/python -m koronis.cli ablation      # reproduces the headline table below
 ```
 
@@ -72,24 +72,29 @@ independent trials (`python -m koronis.cli seeds`):
 | `decline_burst` *(no graph, no learning)* | 0.222 `[0.205, 0.234]` | 0.000 | 0.000 | 0 | 3 / 10 |
 | `shared_entity` *(graph, no learning)* | 0.051 `[0.050, 0.051]` | 0.000 | 0.000 | 40 | 0 / 10 |
 | `gbdt_per_txn` | 0.332 `[0.311, 0.352]` | 0.410 | 0.836 | 476 | 10 / 10 |
-| **`koronis_graph`** | **0.990** `[0.987, 0.995]` | **0.951** | **0.964** | **20** | **10 / 10** |
+| **`koronis_graph`** | **0.996** `[0.989, 0.998]` | **0.965** | **0.988** | **14** | **10 / 10** |
 
 Threshold rules do not degrade here — they stop working: at `k = 60` against a binding
 `τ = 8`, no counter can trip. The per-transaction model detects every time but at **476
-false positives against Koronis's 20**. Recall was never the hard part; precision at a
+false positives against Koronis's 14**. Recall was never the hard part; precision at a
 usable alert volume is.
 
+The architecture producing these numbers was **chosen on the calibration split**, not
+picked by hand — three relations and no heterophily gate, after eight candidates were
+scored without ever reading test.
+[How that was done, and what it cost.](docs/evaluation.md#closing-the-loop-selecting-an-architecture-without-touching-test)
+
 **Detection latency.** At one minute Koronis has already recalled every campaign attempt
-so far, at 0.43 precision against the per-transaction model's 0.09; by ten minutes it is at
-0.88 precision with recall still at 1.00. None of the three learning-free detectors ever
-crosses its frozen threshold on this campaign.
+so far, at 0.38 precision against the per-transaction model's 0.09; by ten minutes it is at
+0.85 precision with 0.96 recall. None of the three learning-free detectors ever crosses its
+frozen threshold on this campaign.
 → [full latency curves](docs/evaluation.md#streaming-and-inference-latency)
 
 **An alert is not a task.** Four hundred event alerts are one campaign, so Koronis
 consolidates them and picks the intervention with the lowest expected rupee cost:
 
 ```
-414 event alerts  ->  17 incidents  ->  1 action recommended
+412 event alerts  ->  18 incidents  ->  1 action recommended
 ```
 
 Median across 8 test streams. The policy sees only an incident's first 12 events plus a
@@ -97,13 +102,14 @@ forecast — never the true remaining count:
 
 | policy | analyst minutes | merchant cost |
 |---|---:|---:|
-| always hold | 234.0 | ₹1,21,644 |
-| event-by-event thresholding | 214.8 | ₹19,167 |
-| **causal policy** *(forecast only)* | **12.0** | **₹16,240** |
-| oracle *(upper bound, knows the future)* | 12.0 | ₹8,691 |
+| always hold | 204.0 | ₹1,04,722 |
+| event-by-event thresholding | 213.0 | ₹7,693 |
+| **causal policy** *(forecast only)* | **12.0** | **₹5,158** |
+| oracle *(upper bound, knows the future)* | 12.0 | ₹3,145 |
 
 Event thresholding reaches the same decision and hands an analyst **eighteen times the
-triage**. Consolidation, not detection, is the difference.
+triage**. Consolidation, not detection, is the difference. Not knowing the future still
+costs — ₹5,158 against the oracle's ₹3,145.
 
 ## Architecture
 
@@ -133,9 +139,9 @@ inside a window. Edges point **backwards in time**, so a streaming evaluation ca
 the future — which is also what lets the replay reproduce batch scores exactly. Aggregation
 is `torch.index_add_`: **no DGL, no PyTorch Geometric**.
 
-The detector is a **temporal heterogeneous graph network**, 6,225 parameters, inductive, and
-trained on expected rupee cost rather than cross-entropy — the business objective *is* the
-training objective.
+The detector is a **temporal heterogeneous graph network**, inductive, trained on expected
+rupee cost rather than cross-entropy — the business objective *is* the training objective.
+Its relation set and its gate were **selected on calibration**, not chosen by taste.
 
 → **[Full architecture, and which parts are learned](docs/architecture.md)**
 
@@ -171,17 +177,17 @@ python site/build.py                            # results/ -> docs/index.html
 
 | Question | Answer | Detail |
 |---|---|---|
-| Does it detect what velocity rules cannot? | 0.990 PR-AUC vs 0.062, on a hold-out spread past the boundary | [Evaluation → protocol](docs/evaluation.md#protocol) |
-| What does a false positive cost? | costed in rupees; 20 FPs against a GBDT's 476 | [Evaluation → decision layer](docs/evaluation.md#decision-layer) |
+| Does it detect what velocity rules cannot? | 0.996 PR-AUC vs 0.062, on a hold-out spread past the boundary | [Evaluation → protocol](docs/evaluation.md#protocol) |
+| What does a false positive cost? | costed in rupees; 14 FPs against a GBDT's 476 | [Evaluation → decision layer](docs/evaluation.md#decision-layer) |
 | Which mechanism carries the signal? | outcome buys earliness, the graph buys precision | [Evaluation](docs/evaluation.md#which-mechanism-carries-the-signal) |
-| Do the architectural claims hold? | one does not — the heterophily gate is **net-negative**, and it is retracted | [Evaluation](docs/evaluation.md#does-the-architecture-earn-its-place) |
+| Do the architectural claims hold? | one did not — the heterophily gate was **net-negative**, and selection removed it | [Evaluation](docs/evaluation.md#does-the-architecture-earn-its-place) |
 | Can that be acted on without cheating? | yes — chosen on calibration, held up on test: cost ₹1,836 → ₹892 | [Evaluation](docs/evaluation.md#closing-the-loop-selecting-an-architecture-without-touching-test) |
 | Is a gateway's wider view worth anything? | measured: the gap grows with the number of merchants | [Evaluation](docs/evaluation.md#vantage-point-one-merchant-or-the-whole-gateway) |
 | Does it survive a different merchant? | flagged on all three shifted profiles; the guardrail is **experimental** | [Evaluation](docs/evaluation.md#traffic-profile-transfer-stress-test) |
-| Can it run online? | 0.99 ms p50; streaming reproduces batch scores exactly | [Evaluation](docs/evaluation.md#streaming-and-inference-latency) |
+| Can it run online? | 0.83 ms p50; streaming reproduces batch scores exactly | [Evaluation](docs/evaluation.md#streaming-and-inference-latency) |
 | Is the *whole* pipeline causal? | yes — consolidation too, via a sliding count-min sketch in fixed memory | [Evaluation](docs/evaluation.md#making-consolidation-causal) |
 | Does it survive being split across machines? | measured — and PR-AUC and rupees rank the routing keys **oppositely** | [Evaluation](docs/evaluation.md#does-the-graph-survive-being-split-across-machines) |
-| What broke? | 8 defects, **4 retracted claims** | [Engineering log](docs/engineering-log.md) |
+| What broke? | 9 defects, **4 retracted claims** | [Engineering log](docs/engineering-log.md) |
 
 ## Limitations
 

@@ -1,6 +1,6 @@
 policy,incidents_actioned,false_incidents,campaign_attempts_stopped,analyst_minutes,merchant_cost_inr,regret_vs_oracle_inr,actions_matching_oracle,exposure_if_unstopped_inr,events_alerted,incidents_formed
-always_allow,0,0,0,0.0,29127.0,1560.0,14,29200.0,414,17
-always_hold,17,16,387,204.0,114009.81,1560.0,14,29200.0,414,17
-event_thresholding,4,3,387,207.0,5304.81,1560.0,14,29200.0,414,17
-causal_policy,4,3,387,12.0,3441.81,1560.0,14,29200.0,414,17
-oracle_policy,1,0,387,12.0,1881.81,1560.0,14,29200.0,414,17
+always_allow,0,0,0,0.0,29127.0,0.0,18,29200.0,412,18
+always_hold,18,17,387,216.0,121017.81,0.0,18,29200.0,412,18
+event_thresholding,1,0,387,206.0,3735.81,0.0,18,29200.0,412,18
+causal_policy,1,0,387,12.0,1881.81,0.0,18,29200.0,412,18
+oracle_policy,1,0,387,12.0,1881.81,0.0,18,29200.0,412,18

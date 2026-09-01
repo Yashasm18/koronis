@@ -78,6 +78,16 @@ Every defect below was surfaced by running experiments, not by reading code.
    the gate is not removed, because selecting architecture on test results is the leakage
    this project refuses elsewhere.
 
+9. **A baseline that became a copy of itself.** After model selection turned the
+   heterophily gate off by default, the architecture ablation kept comparing `full` — a
+   variant defined as "no departures from the default" — against `no_gate`. Those are the
+   same model once the default changes, and the sweep dutifully reported a difference of
+   exactly 0.0000 at every camouflage level rather than failing. The variants are now
+   expressed as departures *from the selected architecture* (`add_gate` rather than
+   `no_gate`), and a test asserts no variant's settings match the defaults it is supposed
+   to depart from. A null result that arrives as a clean zero is worth more suspicion than
+   a noisy one.
+
 An inference benchmark reporting p50 1.78 ms was also discarded: it was measured while a
 training job ran on the same machine. The idle run is 0.99 ms.
 

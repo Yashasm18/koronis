@@ -18,7 +18,6 @@ from collections import defaultdict, deque
 import pandas as pd
 import torch
 
-from .data.schema import RELATIONS
 from .models.koronis import KoronisDetector, node_features
 
 
@@ -38,13 +37,16 @@ class StreamingKoronis:
         self.threshold = float(threshold)
         self.window_s = float(window_s if window_s is not None else detector.window_s)
         self.max_degree = max_degree
+        # Mirror the detector exactly: the parity claim is meaningless if the
+        # stream indexes relations the batch model never looked at.
+        self.relations = list(detector.relations)
 
         self._x: list[torch.Tensor] = []          # per-event features
         self._h1: list[torch.Tensor] = []         # cached layer-1 outputs
         self._ts: list[float] = []
         self._alerted: list[bool] = []
         self._index: dict[str, dict[str, deque]] = {
-            rel: defaultdict(deque) for rel in RELATIONS
+            rel: defaultdict(deque) for rel in self.relations
         }
 
     # ------------------------------------------------------------------ core
@@ -93,7 +95,7 @@ class StreamingKoronis:
         """Prior events inside the window sharing an entity, per relation."""
         cutoff = ts - self.window_s
         out, evidence = [], {}
-        for rel in RELATIONS:
+        for rel in self.relations:
             bucket = self._index[rel].get(str(event[rel]))
             picked: list[int] = []
             if bucket:
@@ -105,7 +107,7 @@ class StreamingKoronis:
         return out, evidence
 
     def _remember(self, event, idx: int, ts: float) -> None:
-        for rel in RELATIONS:
+        for rel in self.relations:
             self._index[rel][str(event[rel])].append(idx)
 
     @staticmethod

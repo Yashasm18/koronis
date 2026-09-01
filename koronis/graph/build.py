@@ -5,7 +5,8 @@ from ..data.schema import RELATIONS
 
 
 def build_edges(events: pd.DataFrame, window_s: float,
-                max_degree: int = 32) -> dict[str, np.ndarray]:
+                max_degree: int = 32,
+                relations: list[str] | None = None) -> dict[str, np.ndarray]:
     """Link events that share an entity value within a time window.
 
     Returns {relation: (2, E) array of (src, dst) row indices}. Edges point
@@ -20,7 +21,7 @@ def build_edges(events: pd.DataFrame, window_s: float,
     ts = events["ts"].to_numpy()
     out: dict[str, np.ndarray] = {}
 
-    for rel in RELATIONS:
+    for rel in (relations if relations is not None else RELATIONS):
         src_list, dst_list = [], []
         for idx in events.groupby(rel, sort=False).indices.values():
             idx = np.sort(idx)

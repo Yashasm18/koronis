@@ -48,7 +48,9 @@ def test_emits_the_required_fields(fitted):
     for key in ("ts", "event_id", "score", "threshold", "alert",
                 "linked_prior_events", "evidence", "ring"):
         assert key in out
-    assert set(out["evidence"]) == {"device_id", "ip_id", "bin_id", "email_domain"}
+    # the stream mirrors the DETECTOR's relations, which are narrower than
+    # the data's - that mirroring is what makes the parity claim meaningful
+    assert set(out["evidence"]) == set(det.relations)
 
 
 def test_first_event_has_no_links(fitted):

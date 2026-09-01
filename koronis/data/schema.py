@@ -8,7 +8,18 @@ EVENT_COLUMNS = [
 
 # Relations are the entity types two events can share. Order is fixed because
 # model weights are indexed by relation position.
+#
+# RELATIONS describes what the DATA contains. Incident linking, the sharding
+# sweep and the aperture experiment all legitimately use every one of them.
 RELATIONS = ["device_id", "ip_id", "bin_id", "email_domain"]
+
+# MODEL_RELATIONS is what the DETECTOR consumes, which is a separate question
+# and a narrower answer. `koronis.cli select` scored eight candidate
+# architectures on the calibration split and chose this one; email_domain was
+# dropped there. Keeping the two lists apart matters: email is weak evidence
+# for the model and still perfectly good evidence for whether two alerts belong
+# to the same incident, where the link-share cap already governs it.
+MODEL_RELATIONS = ["device_id", "ip_id", "bin_id"]
 
 
 @dataclass(frozen=True)

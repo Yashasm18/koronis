@@ -3,7 +3,7 @@ import pandas as pd
 import torch
 import torch.nn as nn
 
-from ..data.schema import RELATIONS
+from ..data.schema import MODEL_RELATIONS
 from ..graph.build import build_edges
 from .layers import RelationalLayer
 from .loss import expected_cost_loss
@@ -58,6 +58,11 @@ class _Net(nn.Module):
 class KoronisDetector:
     """Inductive graph detector for coordinated card-testing campaigns.
 
+    The default architecture is the one selected on the calibration split by
+    `koronis.cli select`: three relations, and the heterophily gate off. Both
+    were arrived at by measurement rather than by preference - see
+    docs/evaluation.md.
+
     Inductive by construction: there are no per-entity embedding tables, only
     per-relation weights. Entity ids never enter the model — they only decide
     which events share an edge. That is what lets it score devices and IPs it
@@ -67,7 +72,8 @@ class KoronisDetector:
     def __init__(self, hidden: int = 32, layers: int = 2,
                  window_s: float = 3600.0, seed: int = 0,
                  use_approved: bool = True, use_edges: bool = True,
-                 use_gate: bool = True, use_rel_attention: bool = True):
+                 use_gate: bool = False, use_rel_attention: bool = True,
+                 relations: list[str] | None = None):
         self.hidden, self.n_layers = hidden, layers
         self.window_s, self.seed = window_s, seed
         # Ablation switches. `use_edges=False` strips every graph edge, leaving
@@ -78,22 +84,27 @@ class KoronisDetector:
         # Architecture switches, so the heterophily gate and the learned
         # relation attention can be ablated the same way the data sources are.
         self.use_gate, self.use_rel_attention = use_gate, use_rel_attention
+        # Which relations this model consumes, which is narrower than what the
+        # data contains. The default is the architecture `koronis.cli select`
+        # chose on the calibration split; pass an explicit list to ablate.
+        self.relations = list(relations if relations is not None else MODEL_RELATIONS)
         self.net: _Net | None = None
 
     def _tensors(self, events: pd.DataFrame):
         x = torch.from_numpy(node_features(events, self.use_approved))
         if not self.use_edges:
             empty = torch.zeros((2, 0), dtype=torch.int64)
-            return x, [empty for _ in RELATIONS]
-        edges = build_edges(events, window_s=self.window_s)
-        return x, [torch.from_numpy(edges[r]) for r in RELATIONS]
+            return x, [empty for _ in self.relations]
+        edges = build_edges(events, window_s=self.window_s,
+                            relations=self.relations)
+        return x, [torch.from_numpy(edges[r]) for r in self.relations]
 
     def fit(self, events: pd.DataFrame, epochs: int = 40,
             c_fn: float = 73.0, c_fp: float = 40.0) -> None:
         torch.manual_seed(self.seed)
         x, edges = self._tensors(events)
         y = torch.from_numpy(events["label"].to_numpy(dtype=np.float32))
-        self.net = _Net(x.shape[1], self.hidden, self.n_layers, len(RELATIONS),
+        self.net = _Net(x.shape[1], self.hidden, self.n_layers, len(self.relations),
                         use_gate=self.use_gate,
                         use_rel_attention=self.use_rel_attention)
         opt = torch.optim.Adam(self.net.parameters(), lr=0.01)
@@ -126,4 +137,4 @@ class KoronisDetector:
         with torch.no_grad():
             att = torch.stack([torch.softmax(layer.rel_att, dim=0)
                                for layer in self.net.layers]).mean(0)
-        return {rel: float(att[i]) for i, rel in enumerate(RELATIONS)}
+        return {rel: float(att[i]) for i, rel in enumerate(self.relations)}

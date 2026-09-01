@@ -1,6 +1,6 @@
 policy,incidents_actioned,false_incidents,analyst_minutes,merchant_cost_inr
-always_allow,0.0,0.0,0.0,60444.0
-always_hold,19.5,15.5,234.0,121644.1
-event_thresholding,2.0,1.0,214.8,19167.1
-causal_policy,2.0,1.0,12.0,16239.8
-oracle_policy,1.5,0.0,12.0,8691.4
+always_allow,0.0,0.0,0.0,53144.0
+always_hold,17.0,13.5,204.0,104722.3
+event_thresholding,1.0,0.0,213.0,7692.7
+causal_policy,1.0,0.0,12.0,5157.7
+oracle_policy,1.0,0.0,12.0,3144.7

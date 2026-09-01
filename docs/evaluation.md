@@ -31,7 +31,7 @@ them and recommends the intervention with the lowest expected cost, not the one 
 the highest risk score:
 
 ```
-414 event alerts  →  17 incidents  →  1 action recommended
+412 event alerts  →  18 incidents  →  1 action recommended
 ```
 
 Two concurrent rings stay two incidents: alerts are linked only through entity values
@@ -90,9 +90,9 @@ splitting by row inflates apparent coverage (91.8% by row vs. the figure below b
 
 | | measured |
 |---|---|
-| P90 interval coverage | 96.6% (target 90%) |
-| Median absolute error, P50 | 104.0 attempts |
-| Mean true remaining | 370.4 attempts |
+| P90 interval coverage | 95.5% (target 90%) |
+| Median absolute error, P50 | 107.3 attempts |
+| Mean true remaining | 367.6 attempts |
 | Fit / conformal streams | 4 (campaigns 2, 3, 4, 6) / 4 (campaigns 0, 1, 5, 7) |
 | Snapshots | 84 calibration / 88 held-out |
 
@@ -108,37 +108,50 @@ Median across 8 independent test streams:
 
 | policy | incidents actioned | false incidents | analyst minutes | merchant cost |
 |---|---:|---:|---:|---:|
-| always allow | 0.0 | 0.0 | 0.0 | ₹60,444 |
-| always hold | 19.5 | 15.5 | 234.0 | ₹121,644 |
-| event-by-event thresholding | 2.0 | 1.0 | 214.8 | ₹19,167 |
-| **causal policy** *(forecast only)* | 2.0 | 1.0 | 12.0 | ₹16,240 |
-| oracle policy *(upper bound)* | 1.5 | 0.0 | 12.0 | ₹8,691 |
+| always allow | 0.0 | 0.0 | 0.0 | ₹53,144 |
+| always hold | 17.0 | 13.5 | 204.0 | ₹1,04,722 |
+| event-by-event thresholding | 1.0 | 0.0 | 213.0 | ₹7,693 |
+| **causal policy** *(forecast only)* | 1.0 | 0.0 | 12.0 | ₹5,158 |
+| oracle policy *(upper bound)* | 1.0 | 0.0 | 12.0 | ₹3,145 |
 
-Fractional counts are medians across an even number of streams. Not knowing the future is
-measured: on the demo stream the causal policy matches the oracle's action on 14 of 17
-incidents, for a regret of ₹1,560; across the eight streams the median cost gap is ₹7,548.
-Event thresholding reaches the same decision but hands an analyst 214.8 minutes of triage
-instead of 12 — consolidation, not detection, is the difference. When the forecast
-interval is wide relative to its median, the policy escalates to analyst review rather
-than automating.
+Fractional counts are medians across an even number of streams. Event thresholding reaches
+the same decision but hands an analyst 213 minutes of triage instead of 12 —
+consolidation, not detection, is the difference. When the forecast interval is wide
+relative to its median, the policy escalates to analyst review rather than automating.
+
+**A retracted claim has come back, and it needs saying carefully.** On the demo stream the
+causal policy now matches the oracle on **18 / 18** incidents, for a regret of **₹0**. An
+earlier version of this project reported exactly that — ₹0 on 11 / 11 — and
+[retracted it](engineering-log.md) when the cause turned out to be a generator defect that
+fragmented campaigns into unrealistically clean pieces. That defect is fixed and stayed
+fixed; the reason the number returned is different, and duller: the
+[selected architecture](#closing-the-loop-selecting-an-architecture-without-touching-test)
+raises event precision enough that the incidents reaching the policy on this one stream are
+unambiguous, so there is nothing left for hindsight to improve on.
+
+It is one stream, and it is not the claim to lean on. **Across the eight streams the oracle
+is still ahead — ₹3,145 against the causal policy's ₹5,158.** Not knowing the future still
+costs about 64% more; the demo stream simply is not where that shows.
 
 ### Incident-level calibration
 
 An event model with ECE 0.0025 does not give a calibrated incident probability for free —
 events inside an incident are strongly dependent, and that dependence is the signal.
-Incident risk is a separate model, fitted on 153 calibration incidents pooled across 8
-streams and measured on 161 held-out incidents:
+Incident risk is a separate model, fitted on 129 calibration incidents pooled across 8
+streams and measured on 145 held-out incidents:
 
 | predicted | observed | incidents |
 |---:|---:|---:|
-| 0.103 | 0.137 | 139 |
-| 0.313 | 0.364 | 11 |
-| 0.995 | 1.000 | 11 |
+| 0.095 | 0.180 | 128 |
+| 0.343 | 0.000 | 1 |
+| 0.432 | 0.500 | 4 |
+| 0.613 | 0.000 | 1 |
+| 0.994 | 1.000 | 11 |
 
-Predicted and observed track closely at the top (0.995 → 1.000) and reasonably at the
-bottom (0.103 → 0.137, slightly under-confident). The single middle bin (0.313 → 0.364,
-11 incidents) is thin; the 0.5–0.7 range holds no incidents at all. Reported rather than
-smoothed over.
+Separation is clean at the top (0.994 → 1.000 on 11 incidents). The bottom bin is
+under-confident (0.095 → 0.180 on 128). The middle is barely determined at all — three
+bins holding 1, 4 and 1 incidents — which is the honest state of a model fitted on 129
+incidents, and is reported rather than smoothed over.
 
 ### Which entity type carries the signal
 
@@ -148,10 +161,10 @@ Dropping each relation in turn and re-fitting under the same protocol (5 trials,
 | variant | PR-AUC | precision | recall | false positives | PR-AUC change |
 |---|---:|---:|---:|---:|---:|
 | all relations | 0.989 | 0.942 | 0.968 | 24 | — |
-| **no `bin_id`** | 0.942 | 0.951 | **0.813** | 17 | **−0.047** |
-| no `ip_id` | 0.983 | 0.928 | 0.960 | 29 | −0.006 |
-| no `device_id` | 0.994 | 0.963 | 0.978 | 15 | +0.005 |
-| no `email_domain` | 0.993 | 0.956 | 0.983 | 18 | +0.004 |
+| no `device_id` | 0.994 | 0.963 | 0.978 | 15 | +0.0049 |
+| no `ip_id` | 0.983 | 0.927 | 0.960 | 29 | -0.0059 |
+| no `bin_id` | 0.942 | 0.951 | 0.812 | 17 | -0.0468 |
+| no `email_domain` | 0.993 | 0.956 | 0.983 | 18 | +0.0042 |
 
 Shared BIN ranges carry almost all of it — remove that relation and recall collapses from
 0.968 to 0.813. Dropping `device_id` or `email_domain` *improves* PR-AUC and cuts false
@@ -169,15 +182,15 @@ Removing each mechanism in turn under the same protocol (5 trials, medians;
 
 | variant | PR-AUC | precision | recall | false positives | first alert |
 |---|---:|---:|---:|---:|---:|
-| **`koronis_full`** | **0.989** | **0.942** | 0.968 | **24** | 0.0 s |
-| `no_edges` — event features only | 0.333 | 0.451 | 0.955 | 465 | 0.0 s |
-| `no_approved` — graph only | 0.726 | 0.746 | 0.648 | 91 | 67.1 s |
+| **`koronis_full`** | 0.997 | 0.964 | 0.990 | 15 | 0.0 s |
+| `no_edges` — event features only | 0.348 | 0.452 | 0.953 | 464 | 0.0 s |
+| `no_approved` — graph only | 0.817 | 0.840 | 0.695 | 53 | 66.6 s |
 | `no_edges` + `no_approved` | 0.061 | 0.000 | 0.000 | 0 | never |
 
-The authorisation outcome buys earliness (alert at t = 0, but 0.451 precision and 465
-false positives). The graph buys precision (first alert moves to 67.1 s and recall drops
-to 0.648, but false positives fall to 91 and precision rises to 0.746). Together: 24 false
-positives at 0.942 precision, a 19× reduction over event-features-alone; with both removed
+The authorisation outcome buys earliness (alert at t = 0, but 0.452 precision and 464
+false positives). The graph buys precision (first alert moves to 66.6 s and recall drops
+to 0.695, but false positives fall to 53 and precision rises to 0.840). Together: 15 false
+positives at 0.964 precision, a 31× reduction over event-features-alone; with both removed
 the model never fires, so no third signal source is hiding in the features.
 `tests/test_first_event.py` pins the structural claim that the opening attempt has zero
 campaign-derived links and cannot acquire any.
@@ -191,7 +204,7 @@ event at a time and **reproduces batch scores exactly** (asserted to `1e-5` in
 
 | p50 | p95 | p99 | mean | throughput |
 |---:|---:|---:|---:|---:|
-| 0.99 ms | 1.19 ms | 1.26 ms | 0.98 ms | ~1,018 events/sec |
+| 0.83 ms | 1.05 ms | 1.27 ms | 0.84 ms | ~1,195 events/sec |
 
 **Per-event cost is flat in stream length**, by construction:
 
@@ -199,7 +212,7 @@ event at a time and **reproduces batch scores exactly** (asserted to `1e-5` in
   `max_degree` fan-in cap in [`graph/build.py`](../koronis/graph/build.py), which keeps the
   most recent neighbours), `L = 2` message-passing layers, `d = 32`
   hidden units. None of these depends on the number of events already seen, so measured
-  latency holds at ~0.99 ms p50 regardless of stream length.
+  latency holds at ~0.83 ms p50 regardless of stream length.
 - **Space** — `O(W · λ · d)`: the `window_s = 3600 s` span times the arrival rate `λ`.
   `bucket.popleft()` evicts events once `t − t_event > W`, so memory tracks active window
   occupancy, not cumulative volume. `test_stream.py::test_window_bounds_memory` asserts
@@ -375,60 +388,49 @@ stay apart online.
 
 ### Does the architecture earn its place?
 
-The mechanism and relation ablations test *data sources*. They say nothing about the two
-design decisions in [`layers.py`](../koronis/models/layers.py) — the heterophily gate and the
-learned relation attention — which were, until this experiment, asserted rather than
-measured. `python -m koronis.cli architecture` removes each and refits under the same
-three-split protocol, 5 trials, medians.
+The mechanism and relation ablations test *data sources*. This one tests the two design
+decisions in [`layers.py`](../koronis/models/layers.py) — the heterophily gate and the
+learned relation attention — plus depth.
 
-The gate's justification is specific enough to make a **conditional** prediction. It exists
-to damp edges joining dissimilar nodes, and camouflage is exactly what creates those: a
-camouflaged attempt draws its amount and email domain from the background, so it links to
-legitimate traffic that looks nothing like the rest of the ring. The gate should therefore
-buy *more* as camouflage rises, and little at camouflage 0.
+The gate's justification was specific enough to make a **conditional** prediction. It damps
+edges joining dissimilar nodes, and camouflage is exactly what creates those: a camouflaged
+attempt draws its amount and email domain from the background, so it links to legitimate
+traffic that looks nothing like the rest of the ring. The gate should therefore buy *more*
+as camouflage rises, and little at camouflage 0.
 
-**It does the opposite.**
+**It does the opposite.** Variants are expressed as departures from the selected
+architecture, so the gate appears here as something to *add back*:
 
-| camouflage | full | no gate | uniform relation attention | one layer |
+| camouflage | selected | + gate | uniform relation attention | one layer |
 |---:|---:|---:|---:|---:|
-| 0.0 | 1.0000 | 0.9999 | 0.9999 | 0.9984 |
-| 0.5 | 0.9967 | **0.9989** | 0.9965 | 0.9742 |
-| 1.0 | 0.9892 | **0.9943** | 0.9861 | 0.9487 |
+| 0.0 | 0.9999 | 1.0000 | 0.9999 | 0.9993 |
+| 0.5 | 0.9993 | 0.9983 | 0.9993 | 0.9774 |
+| 1.0 | 0.9968 | 0.9934 | 0.9965 | 0.9254 |
 
-PR-AUC cost of removing each piece (positive = the piece was helping):
+PR-AUC cost of departing from the selected architecture (positive = the selected choice was
+better):
 
-| camouflage | heterophily gate | relation attention | second layer |
+| camouflage | adding the gate | uniform attention | one layer |
 |---:|---:|---:|---:|
-| 0.0 | +0.0001 | +0.0001 | +0.0016 |
-| 0.5 | **−0.0022** | +0.0002 | +0.0225 |
-| 1.0 | **−0.0051** | +0.0031 | **+0.0405** |
+| 0.0 | −0.0001 | 0.0000 | +0.0006 |
+| 0.5 | **+0.0010** | 0.0000 | +0.0219 |
+| 1.0 | **+0.0034** | +0.0003 | **+0.0714** |
 
-**The heterophily gate is net-negative, and the effect grows with camouflage — the exact
-inverse of the prediction.** At full camouflage, removing it improves PR-AUC (0.989 →
-0.994), precision (0.942 → 0.958), recall (0.968 → 0.980), and cuts false positives from
-**24 to 17**. Across all 15 seed × camouflage cells it is at least as good without the gate
-on PR-AUC in 12, on false positives in 12, and on recall in 13. The PR-AUC differences are
-small; the false-positive difference is not.
+**Adding the gate back costs more as camouflage rises** — the inverse of the prediction that
+motivated it. **Relation attention is a wash**, consistent with the
+[per-relation ablation](#which-entity-type-carries-the-signal), which already found the
+learned weights disagree with what the relations are actually worth. **Depth is the piece
+that earns its place**, and it is the one whose benefit shows the conditional shape the gate
+was supposed to have: negligible at camouflage 0, +0.071 PR-AUC at camouflage 1.
+Coordination that survives camouflage is visible two hops out, not one.
 
-**Relation attention is a wash.** It buys +0.003 PR-AUC at full camouflage and costs two
-extra false positives. That is consistent with the [per-relation ablation](#which-entity-type-carries-the-signal),
-which already found the learned weights disagree with what the relations are actually
-worth.
-
-**Depth is the piece that earns its place**, and it is the one whose benefit shows the
-conditional shape the gate was supposed to have: negligible at camouflage 0, +0.041 PR-AUC
-at camouflage 1, and better on 15 / 15 cells. Coordination that survives camouflage is
-visible two hops out, not one. That is a real finding about the mechanism, and it was not
-the one being tested for.
-
-**What this retracts.** Earlier versions of this README argued the gate was load-bearing
-because fraud rings camouflage into legitimate traffic. The reasoning was plausible and the
-measurement does not support it: on this data the gate costs false positives without buying
-precision. It remains in the model, and is **deliberately not removed** — selecting an
-architecture on test results is the same leakage discipline this project enforces for the
-[net-negative relations](#which-entity-type-carries-the-signal). Doing it properly means
-selecting on the calibration split and re-running the full protocol, which is the recorded
-next step rather than a quiet edit that would improve a headline number.
+**What this retracted.** Earlier versions argued the gate was load-bearing because fraud
+rings camouflage into legitimate traffic. The reasoning was plausible and the measurement
+does not support it. It was reported and left in the model at the time, because acting on a
+test-set finding is the leakage this project refuses — and then acted on properly, through
+[calibration-based selection](#closing-the-loop-selecting-an-architecture-without-touching-test).
+The gate is now off by default because a held-out procedure chose to remove it, not because
+this table did.
 
 ### Vantage point: one merchant or the whole gateway
 
@@ -499,12 +501,12 @@ analyst review. That is a trade, not a free win:
 
 | profile | false auto-actions avoided | true responses downgraded | analyst minutes added |
 |---|---:|---:|---:|
-| `subscription` | 28 | 9 | 312 |
-| `marketplace` | 2 | 11 | 60 |
-| `flash_sale` | 19 | 9 | 132 |
+| `subscription` | 20 | 11 | 264 |
+| `marketplace` | 3 | 11 | 72 |
+| `flash_sale` | 16 | 11 | 156 |
 
-Across the shifted profiles the guardrail prevents 49 false automated interventions and
-downgrades 29 genuine responses, adding 504 analyst minutes.
+Across the shifted profiles the guardrail prevents 39 false automated interventions and
+downgrades 33 genuine responses, adding 492 analyst minutes.
 
 **Status: experimental decision support, not a safety control.** The cut-off is fitted on
 16 base streams and the false-flag rate then measured on 12 disjoint base streams comes

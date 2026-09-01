@@ -64,14 +64,38 @@ def test_gate_on_does_influence_the_output():
 
 
 def test_switches_reach_the_detector_and_change_its_scores():
+    """Every switch is compared against its own opposite, never against the
+    default - the default architecture is itself a measured choice and moves."""
     ev = _stream()
-    base = KoronisDetector(seed=0, window_s=600.0)
-    base.fit(ev, epochs=8)
-    for kw in (dict(use_gate=False), dict(use_rel_attention=False), dict(layers=1)):
-        alt = KoronisDetector(seed=0, window_s=600.0, **kw)
-        alt.fit(ev, epochs=8)
-        assert not np.allclose(base.score_events(ev), alt.score_events(ev)), \
-            f"{kw} produced identical scores — the switch is not wired through"
+    pairs = [
+        (dict(use_gate=True), dict(use_gate=False)),
+        (dict(use_rel_attention=True), dict(use_rel_attention=False)),
+        (dict(layers=2), dict(layers=1)),
+        (dict(relations=["device_id", "ip_id", "bin_id"]), dict(relations=["bin_id"])),
+    ]
+    for on, off in pairs:
+        a = KoronisDetector(seed=0, window_s=600.0, **on); a.fit(ev, epochs=8)
+        b = KoronisDetector(seed=0, window_s=600.0, **off); b.fit(ev, epochs=8)
+        assert not np.allclose(a.score_events(ev), b.score_events(ev)), \
+            f"{on} vs {off} produced identical scores — the switch is not wired through"
+
+
+def test_architecture_variants_are_departures_from_the_default():
+    """A variant of {} would be the baseline compared against itself, which is
+    what happened when selection turned the gate off and `no_gate` silently
+    became a duplicate of `full`."""
+    import koronis.cli as cli
+    from koronis.models.koronis import KoronisDetector
+    base = KoronisDetector()
+    for name, kw in cli.ARCH_VARIANTS.items():
+        if name == "selected":
+            assert kw == {}, "the baseline variant must be the default"
+            continue
+        assert kw, f"{name} has no departure from the default"
+        for key, val in kw.items():
+            assert getattr(base, key if key != "layers" else "n_layers") != val, (
+                f"{name} sets {key}={val}, which is already the default - "
+                f"it would measure nothing")
 
 
 def test_one_layer_really_builds_one_layer():

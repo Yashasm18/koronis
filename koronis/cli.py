@@ -396,9 +396,6 @@ def select(n_seeds: int = 5) -> pd.DataFrame:
     happens to suit that draw, which is the same mistake as tuning on test, one
     level down.
     """
-    from .data import schema
-    original = list(schema.RELATIONS)
-
     rows = []
     for seed in range(n_seeds):
         train = _train_set(seed * 10)
@@ -410,10 +407,10 @@ def select(n_seeds: int = 5) -> pd.DataFrame:
                          calib_sel["label"].to_numpy())
 
         for name, (rels, gate) in SELECT_CANDIDATES.items():
-            schema.RELATIONS[:] = rels
-            try:
-                m = KoronisDetector(seed=seed, window_s=WINDOW_S, use_gate=gate)
-                m.fit(train, epochs=60)
+            m = KoronisDetector(seed=seed, window_s=WINDOW_S,
+                                use_gate=gate, relations=rels)
+            m.fit(train, epochs=60)
+            if True:
                 thr, _ = cost_optimal_threshold(_raw(m.score_events(calib_thr)), y_a,
                                                 COST_PER_ATTEMPT_INR,
                                                 COST_PER_FALSE_BLOCK_INR)
@@ -430,8 +427,6 @@ def select(n_seeds: int = 5) -> pd.DataFrame:
                     "test_recall": round(float(recall_score(y_t, fired, zero_division=0)), 4),
                     "test_false_positives": int((fired & (y_t == 0)).sum()),
                 })
-            finally:
-                schema.RELATIONS[:] = original
 
     allr = pd.DataFrame(rows)
     RESULTS.mkdir(exist_ok=True)
@@ -576,9 +571,13 @@ def online(n_streams: int = 6) -> pd.DataFrame:
 # mechanism ablation covers: the heterophily gate and the learned relation
 # attention are design claims made in layers.py, and until they are removed
 # and re-measured they are only assertions.
+# Expressed as departures from the SELECTED architecture, which is the default.
+# When the gate was still on by default this read "no_gate"; after selection
+# removed it, the honest question is what putting it back costs - and a variant
+# dict of `{}` would silently be the baseline compared against itself.
 ARCH_VARIANTS = {
-    "full": dict(),
-    "no_gate": dict(use_gate=False),
+    "selected": dict(),
+    "add_gate": dict(use_gate=True),
     "uniform_relation_attention": dict(use_rel_attention=False),
     "one_layer": dict(layers=1),
 }
@@ -640,8 +639,8 @@ def architecture(n_seeds: int = 5) -> pd.DataFrame:
 
     wide = med.pivot(index="camouflage", columns="variant", values="pr_auc")
     for v in ARCH_VARIANTS:
-        if v != "full":
-            wide[f"delta_{v}"] = (wide["full"] - wide[v]).round(4)
+        if v != "selected":
+            wide[f"delta_{v}"] = (wide["selected"] - wide[v]).round(4)
     wide.to_csv(RESULTS / "architecture_delta.csv")
 
     print(f"\narchitecture ablation, {n_seeds} trials, medians\n")
@@ -831,9 +830,9 @@ def relations(n_seeds: int = 5) -> pd.DataFrame:
 
     Each variant is trained and evaluated under the same three-split protocol.
     """
-    from .data import schema
+    from .data.schema import RELATIONS
 
-    original = list(schema.RELATIONS)
+    original = list(RELATIONS)
     variants = {"all": original}
     for rel in original:
         variants[f"no_{rel}"] = [r for r in original if r != rel]
@@ -846,12 +845,13 @@ def relations(n_seeds: int = 5) -> pd.DataFrame:
         y, y_cal = test["label"].to_numpy(), calib["label"].to_numpy()
 
         for name, rels in variants.items():
-            # RELATIONS is read at call time by build_edges and the model, so
-            # patching it here changes which entity types exist for this fit.
-            schema.RELATIONS[:] = rels
-            try:
-                m = KoronisDetector(seed=seed, window_s=WINDOW_S)
-                m.fit(train, epochs=60)
+            # The relation set is a constructor argument, so a variant is a
+            # different model rather than a mutated global - which used to be
+            # patched here and could leak into any later experiment.
+            m = KoronisDetector(seed=seed, window_s=WINDOW_S, relations=rels,
+                                use_gate=True)
+            m.fit(train, epochs=60)
+            if True:
                 thr, _ = cost_optimal_threshold(_raw(m.score_events(calib)), y_cal,
                                                 COST_PER_ATTEMPT_INR,
                                                 COST_PER_FALSE_BLOCK_INR)
@@ -864,8 +864,6 @@ def relations(n_seeds: int = 5) -> pd.DataFrame:
                     "recall": round(float(recall_score(y, fired, zero_division=0)), 4),
                     "false_positives": int((fired & (y == 0)).sum()),
                 })
-            finally:
-                schema.RELATIONS[:] = original
 
     allr = pd.DataFrame(rows)
     RESULTS.mkdir(exist_ok=True)

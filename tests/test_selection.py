@@ -54,10 +54,13 @@ def test_recorded_verdict_is_internally_consistent():
         v["selected_test_cost_inr"] < v["full_test_cost_inr"])
 
 
-def test_relations_are_restored_after_each_candidate():
-    """select() patches a module-level list; leaking that would corrupt every
-    later experiment in the same process."""
+def test_candidates_are_passed_in_not_patched_into_a_global():
+    """An earlier version mutated data.schema.RELATIONS per candidate, which
+    leaks into any later experiment in the same process if a fit raises. A
+    variant is now a constructor argument, so there is no global to restore."""
     from koronis.data import schema
     before = list(schema.RELATIONS)
-    assert "finally:" in SRC and "schema.RELATIONS[:] = original" in SRC
+    assert "schema.RELATIONS[:]" not in SRC, "select() still mutates a global"
+    assert "relations=rels" in SRC, "candidates must be passed to the detector"
+    list(cli.SELECT_CANDIDATES)                      # touching it must not mutate
     assert list(schema.RELATIONS) == before
