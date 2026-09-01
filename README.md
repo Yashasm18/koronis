@@ -3,7 +3,7 @@
 > Detection of distributed card-testing campaigns that per-entity velocity rules cannot see at any threshold.
 
 [![CI](https://github.com/Yashasm18/koronis/actions/workflows/ci.yml/badge.svg)](https://github.com/Yashasm18/koronis/actions/workflows/ci.yml)
-[![tests](https://img.shields.io/badge/tests-174%20passing-2ea44f)](tests/)
+[![tests](https://img.shields.io/badge/tests-177%20passing-2ea44f)](tests/)
 [![python](https://img.shields.io/badge/python-3.14-3776ab)](https://www.python.org/)
 [![license: MIT](https://img.shields.io/badge/license-MIT-yellow)](LICENSE)
 [![graph libs](https://img.shields.io/badge/graph%20libraries-none-8a3ffc)](koronis/models/layers.py)
@@ -36,12 +36,12 @@ python -m venv .venv
 .venv/bin/pip install -r requirements.txt -r requirements-dev.txt
 .venv/bin/python -m playwright install chromium   # the site tests drive the demo page
 .venv/bin/python site/build.py                    # they need docs/index.html to exist
-.venv/bin/python -m pytest tests/ -q              # 174 tests, ~1-2 min
+.venv/bin/python -m pytest tests/ -q              # 177 tests, ~1-2 min
 .venv/bin/python -m koronis.cli ablation          # reproduces the headline table below
 ```
 
 The suite runs without `requirements-dev.txt` — the six tests that drive the demo page
-skip — but then 168 are collected rather than 174, and the test-count check says so.
+skip — but then 171 are collected rather than 177, and the test-count check says so.
 
 ## Key results
 
@@ -232,6 +232,7 @@ is read from there** — nothing is transcribed by hand.
 .venv/bin/python -m koronis.cli sharding        # does the graph survive being split across machines
 .venv/bin/python -m koronis.cli replicate       # can replication recover what sharding deletes
 .venv/bin/python -m koronis.cli select          # architecture selection on calibration, tested once
+.venv/bin/python -m koronis.cli capacity        # width x depth grid, selected on calibration
 .venv/bin/python -m koronis.cli aperture        # merchant view vs gateway view
 .venv/bin/python -m koronis.cli incidents       # alerts -> incidents -> forecast -> action
 .venv/bin/python -m koronis.cli drift           # traffic-profile transfer stress test

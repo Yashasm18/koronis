@@ -92,3 +92,54 @@ def test_every_results_file_referenced_by_a_cli_command_exists():
     import koronis.cli as cli
     for cmd in re.findall(r"koronis\.cli (\w+)", (ROOT / "README.md").read_text()):
         assert hasattr(cli, cmd), f"README documents `{cmd}`, which does not exist"
+
+
+# ── cross-document agreement ────────────────────────────────────────────────
+# The manifest above asks "does every figure from results/ appear somewhere".
+# It cannot see two documents stating the same quantity differently, which is
+# how the decision-layer funnel came to read "1 action recommended" in one file
+# and "2 actions recommended" in another, both citing the same stream. These
+# check agreement, not just presence.
+
+def _funnel_numbers(text):
+    """Every `N event alerts -> M incidents -> K action(s)` triple in a file."""
+    return re.findall(
+        r"(\d+)\s+event alerts\s*(?:->|→)\s*(\d+)\s+incidents\s*(?:->|→)\s*(\d+)\s+actions?",
+        text)
+
+
+def test_the_funnel_agrees_across_documents_and_with_results():
+    demo = {r["policy"]: r for r in _json("policy.json")["summary"]}["causal_policy"]
+    expected = (str(demo["events_alerted"]), str(demo["incidents_formed"]),
+                str(demo["incidents_actioned"]))
+    found = {}
+    for f in [ROOT / "README.md"] + sorted((ROOT / "docs").glob("*.md")):
+        for triple in _funnel_numbers(f.read_text()):
+            found.setdefault(triple, []).append(f.name)
+    assert found, "the decision-layer funnel is not stated anywhere"
+    assert len(found) == 1, (
+        f"documents disagree about the funnel: "
+        + "; ".join(f"{t} in {v}" for t, v in found.items()))
+    (triple, where), = found.items()
+    assert triple == expected, (
+        f"docs say {triple} in {where}; policy.json says {expected}")
+
+
+def test_the_test_count_is_the_same_everywhere_it_is_stated():
+    """Badge, quickstart and CONTRIBUTING each state it; they must agree."""
+    readme = (ROOT / "README.md").read_text()
+    contributing = (ROOT / "CONTRIBUTING.md").read_text()
+    badge = int(re.search(r"badge/tests-(\d+)%20passing", readme).group(1))
+    stated = {int(n) for n in re.findall(r"#\s*(\d+) tests, ~", readme + contributing)}
+    assert stated, "no '# N tests' comment found in README or CONTRIBUTING"
+    assert stated == {badge}, (
+        f"badge says {badge}, setup comments say {sorted(stated)}")
+
+
+def test_the_defect_count_matches_the_engineering_log():
+    readme = (ROOT / "README.md").read_text()
+    claimed = re.search(r"\|\s*What broke\?\s*\|\s*(\d+) defects", readme)
+    assert claimed, "the README's 'What broke?' row no longer states a defect count"
+    actual = len(re.findall(r"^(\d+)\. \*\*", (ROOT / "docs" / "engineering-log.md").read_text(), re.M))
+    assert int(claimed.group(1)) == actual, (
+        f"README claims {claimed.group(1)} defects; the log has {actual} numbered entries")

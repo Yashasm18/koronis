@@ -31,8 +31,10 @@ them and recommends the intervention with the lowest expected cost, not the one 
 the highest risk score:
 
 ```
-402 event alerts  →  7 incidents  →  1 action recommended
+402 event alerts  →  7 incidents  →  2 actions recommended
 ```
+
+One test stream, end to end — the same stream the demo replays. Of those two actions one was wrong: a two-attempt incident rate-limited where the oracle would have left it alone. The other five incidents are correctly left on `monitor`.
 
 Two concurrent rings stay two incidents: alerts are linked only through entity values
 covering under 2% of the whole stream, so sharing `gmail.com` links nothing. Action
@@ -413,7 +415,7 @@ silently hides an attack.
 **Median: 18 incidents either way, purity
 1.000 / 1.000, recall 0.9802 /
 0.9802.** Making the decision causal costs nothing measurable here, in
-**4096 KB** of sketch that does not grow with the stream.
+**4 MB** of sketch that does not grow with the stream.
 
 The two are not expected to agree exactly, and where they differ the batch version is not
 the ground truth — it is the one using the future.
