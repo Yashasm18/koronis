@@ -14,6 +14,7 @@
     python -m koronis.cli architecture # do the gate and the attention earn their place
     python -m koronis.cli online      # online consolidation vs the batch grouping
     python -m koronis.cli sharding    # does the graph survive being split across machines
+    python -m koronis.cli select      # model selection on calibration, evaluated once on test
 """
 import json
 import sys
@@ -357,6 +358,114 @@ def mechanism(n_seeds: int = 5) -> pd.DataFrame:
     print(f"\nmechanism ablation, {n_seeds} trials, medians\n")
     print(summary.to_string(index=False))
     return summary
+
+
+# Candidate architectures. Three components have been measured as net-negative
+# or neutral - the device relation, the email relation, and the heterophily
+# gate - each in an experiment that used the TEST split. Acting on those
+# findings directly would be selecting an architecture on test results, which
+# is the leakage this project refuses everywhere else. So the candidates are
+# re-scored on calibration, the winner is chosen there, and test is touched
+# once at the end to report what that choice was worth.
+SELECT_CANDIDATES = {
+    "full":                  (["device_id", "ip_id", "bin_id", "email_domain"], True),
+    "no_device":             (["ip_id", "bin_id", "email_domain"], True),
+    "no_email":              (["device_id", "ip_id", "bin_id"], True),
+    "no_device_no_email":    (["ip_id", "bin_id"], True),
+    "no_gate":               (["device_id", "ip_id", "bin_id", "email_domain"], False),
+    "no_device_no_gate":     (["ip_id", "bin_id", "email_domain"], False),
+    "no_email_no_gate":      (["device_id", "ip_id", "bin_id"], False),
+    "lean":                  (["ip_id", "bin_id"], False),
+}
+
+
+def _decision_cost(y: np.ndarray, scores: np.ndarray, thr: float) -> float:
+    """What the operating point costs, in the currency the model is trained on."""
+    fired = scores >= thr
+    fn = int((~fired & (y == 1)).sum())
+    fp = int((fired & (y == 0)).sum())
+    return fn * COST_PER_ATTEMPT_INR + fp * COST_PER_FALSE_BLOCK_INR
+
+
+def select(n_seeds: int = 5) -> pd.DataFrame:
+    """Choose an architecture on held-out calibration data, then report on test.
+
+    Two independent calibration draws are used, not one: the threshold is fitted
+    on the first and the selection score is measured on the second. Scoring a
+    variant at a threshold fitted on the same events flatters whichever variant
+    happens to suit that draw, which is the same mistake as tuning on test, one
+    level down.
+    """
+    from .data import schema
+    original = list(schema.RELATIONS)
+
+    rows = []
+    for seed in range(n_seeds):
+        train = _train_set(seed * 10)
+        calib_thr = _calibration_set(seed * 10 + 2)      # fits the threshold
+        calib_sel = _calibration_set(seed * 10 + 5)      # scores the candidate
+        test = _dataset(seed * 10 + 1, TEST_K, TEST_CAMO)
+        y_t, y_a, y_b = (test["label"].to_numpy(),
+                         calib_thr["label"].to_numpy(),
+                         calib_sel["label"].to_numpy())
+
+        for name, (rels, gate) in SELECT_CANDIDATES.items():
+            schema.RELATIONS[:] = rels
+            try:
+                m = KoronisDetector(seed=seed, window_s=WINDOW_S, use_gate=gate)
+                m.fit(train, epochs=60)
+                thr, _ = cost_optimal_threshold(_raw(m.score_events(calib_thr)), y_a,
+                                                COST_PER_ATTEMPT_INR,
+                                                COST_PER_FALSE_BLOCK_INR)
+                sel = _raw(m.score_events(calib_sel))
+                sc = _raw(m.score_events(test))
+                fired = sc >= thr
+                rows.append({
+                    "seed": seed, "variant": name,
+                    "select_cost_inr": round(_decision_cost(y_b, sel, thr), 1),
+                    "select_pr_auc": round(float(average_precision_score(y_b, sel)), 4),
+                    "test_cost_inr": round(_decision_cost(y_t, sc, thr), 1),
+                    "test_pr_auc": round(float(average_precision_score(y_t, sc)), 4),
+                    "test_precision": round(float(precision_score(y_t, fired, zero_division=0)), 4),
+                    "test_recall": round(float(recall_score(y_t, fired, zero_division=0)), 4),
+                    "test_false_positives": int((fired & (y_t == 0)).sum()),
+                })
+            finally:
+                schema.RELATIONS[:] = original
+
+    allr = pd.DataFrame(rows)
+    RESULTS.mkdir(exist_ok=True)
+    allr.to_csv(RESULTS / "select_raw.csv", index=False)
+    med = (allr.groupby("variant", sort=False).median(numeric_only=True)
+           .drop(columns=["seed"]).round(4).reset_index())
+    med.to_csv(RESULTS / "select.csv", index=False)
+
+    winner = med.loc[med["select_cost_inr"].idxmin(), "variant"]
+    full = med[med["variant"] == "full"].iloc[0]
+    won = med[med["variant"] == winner].iloc[0]
+    verdict = {
+        "selected_on_calibration": winner,
+        "selection_beat_full_on_calibration":
+            bool(won["select_cost_inr"] < full["select_cost_inr"]),
+        "held_up_on_test": bool(won["test_cost_inr"] < full["test_cost_inr"]),
+        "full_test_cost_inr": float(full["test_cost_inr"]),
+        "selected_test_cost_inr": float(won["test_cost_inr"]),
+        "full_test_pr_auc": float(full["test_pr_auc"]),
+        "selected_test_pr_auc": float(won["test_pr_auc"]),
+        "n_seeds": n_seeds,
+    }
+    json.dump(verdict, open(RESULTS / "select.json", "w"), indent=2)
+
+    print(f"\nmodel selection, {n_seeds} trials, medians")
+    print("selection uses CALIBRATION only; test is reported once, after.\n")
+    print(med.to_string(index=False))
+    print(f"\nchosen on calibration: {winner}")
+    print(f"  calibration cost  full INR {full['select_cost_inr']:,.0f}"
+          f"  ->  {winner} INR {won['select_cost_inr']:,.0f}")
+    print(f"  test cost         full INR {full['test_cost_inr']:,.0f}"
+          f"  ->  {winner} INR {won['test_cost_inr']:,.0f}"
+          f"   ({'held up' if verdict['held_up_on_test'] else 'DID NOT hold up'})")
+    return med
 
 
 SHARD_COUNTS = (1, 2, 4, 8, 16)
@@ -1158,4 +1267,4 @@ if __name__ == "__main__":
      "mechanism": mechanism, "incidents": incidents, "drift": drift,
      "relations": relations, "aperture": aperture,
      "architecture": architecture, "online": online,
-     "sharding": sharding}[cmd]()
+     "sharding": sharding, "select": select}[cmd]()

@@ -3,7 +3,7 @@
 > Detection of distributed card-testing campaigns that per-entity velocity rules cannot see at any threshold.
 
 [![CI](https://github.com/Yashasm18/koronis/actions/workflows/ci.yml/badge.svg)](https://github.com/Yashasm18/koronis/actions/workflows/ci.yml)
-[![tests](https://img.shields.io/badge/tests-126%20passing-2ea44f)](tests/)
+[![tests](https://img.shields.io/badge/tests-131%20passing-2ea44f)](tests/)
 [![python](https://img.shields.io/badge/python-3.14-3776ab)](https://www.python.org/)
 [![license: MIT](https://img.shields.io/badge/license-MIT-yellow)](LICENSE)
 [![graph libs](https://img.shields.io/badge/graph%20libraries-none-8a3ffc)](koronis/models/layers.py)
@@ -33,7 +33,7 @@ detection is possible at all** — stated as arithmetic, then tested.
 
 ```bash
 python -m venv .venv && .venv/bin/pip install -r requirements.txt
-.venv/bin/python -m pytest tests/ -q          # 126 tests, ~1-2 min
+.venv/bin/python -m pytest tests/ -q          # 131 tests, ~1-2 min
 .venv/bin/python -m koronis.cli ablation      # reproduces the headline table below
 ```
 
@@ -155,6 +155,7 @@ is read from there** — nothing is transcribed by hand.
 .venv/bin/python -m koronis.cli architecture    # do the gate and the attention earn their place
 .venv/bin/python -m koronis.cli online          # online consolidation vs the batch grouping
 .venv/bin/python -m koronis.cli sharding        # does the graph survive being split across machines
+.venv/bin/python -m koronis.cli select          # architecture selection on calibration, tested once
 .venv/bin/python -m koronis.cli aperture        # merchant view vs gateway view
 .venv/bin/python -m koronis.cli incidents       # alerts -> incidents -> forecast -> action
 .venv/bin/python -m koronis.cli drift           # traffic-profile transfer stress test
@@ -174,6 +175,7 @@ python site/build.py                            # results/ -> docs/index.html
 | What does a false positive cost? | costed in rupees; 20 FPs against a GBDT's 476 | [Evaluation → decision layer](docs/evaluation.md#decision-layer) |
 | Which mechanism carries the signal? | outcome buys earliness, the graph buys precision | [Evaluation](docs/evaluation.md#which-mechanism-carries-the-signal) |
 | Do the architectural claims hold? | one does not — the heterophily gate is **net-negative**, and it is retracted | [Evaluation](docs/evaluation.md#does-the-architecture-earn-its-place) |
+| Can that be acted on without cheating? | yes — chosen on calibration, held up on test: cost ₹1,836 → ₹892 | [Evaluation](docs/evaluation.md#closing-the-loop-selecting-an-architecture-without-touching-test) |
 | Is a gateway's wider view worth anything? | measured: the gap grows with the number of merchants | [Evaluation](docs/evaluation.md#vantage-point-one-merchant-or-the-whole-gateway) |
 | Does it survive a different merchant? | flagged on all three shifted profiles; the guardrail is **experimental** | [Evaluation](docs/evaluation.md#traffic-profile-transfer-stress-test) |
 | Can it run online? | 0.99 ms p50; streaming reproduces batch scores exactly | [Evaluation](docs/evaluation.md#streaming-and-inference-latency) |

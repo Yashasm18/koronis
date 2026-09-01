@@ -8,7 +8,7 @@ following them keeps the results trustworthy.
 ```bash
 python -m venv .venv
 .venv/bin/pip install -r requirements.txt
-.venv/bin/python -m pytest tests/ -q          # 126 tests, ~1–2 min
+.venv/bin/python -m pytest tests/ -q          # 131 tests, ~1–2 min
 ```
 
 Python 3.14 is the tested version (see [`.github/workflows/ci.yml`](.github/workflows/ci.yml)).

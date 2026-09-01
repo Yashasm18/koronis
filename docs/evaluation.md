@@ -209,6 +209,55 @@ On the held-out stream Koronis alerts on the campaign's opening attempt — but 
 is a declined authorisation with no campaign neighbours yet, weak on its own; the graph is
 what makes the following attempts actionable.
 
+### Closing the loop: selecting an architecture without touching test
+
+Three components had been measured as net-negative or neutral — the device relation and the
+email relation in the [per-relation ablation](#which-entity-type-carries-the-signal), and
+the heterophily gate in the [architecture ablation](#does-the-architecture-earn-its-place).
+Every one of those measurements used the **test** split, so acting on them directly would
+have been selecting an architecture on test results: the leakage this project refuses
+elsewhere. Each was therefore reported and left in place.
+
+This closes it properly. Eight candidates are re-scored on **calibration only**, the winner
+is chosen there, and test is read once at the end to report what the choice was worth.
+
+Two independent calibration draws are used, not one: the threshold is fitted on the first
+and the selection score measured on the second. Scoring a candidate at a threshold fitted
+on the same events flatters whichever variant suits that draw — the same mistake as tuning
+on test, one level down.
+
+`python -m koronis.cli select`, 5 trials, medians. **Only the first column may inform the
+choice:**
+
+| candidate | calibration cost *(selects)* | test cost | test PR-AUC | precision | recall | FPs |
+|---|---:|---:|---:|---:|---:|---:|
+| `full` | ₹1,398 | ₹1,836 | 0.9892 | 0.942 | 0.968 | 24 |
+| `no_device` | ₹1,038 | ₹1,111 | 0.9941 | 0.963 | 0.978 | 15 |
+| `no_email` | ₹1,125 | ₹1,511 | 0.9934 | 0.956 | 0.983 | 18 |
+| `no_device_no_email` | ₹885 | ₹918 | 0.9959 | 0.970 | 0.985 | 12 |
+| `no_gate` | ₹833 | ₹1,278 | 0.9943 | 0.958 | 0.980 | 17 |
+| `no_device_no_gate` | ₹833 | ₹958 | 0.9951 | 0.965 | 0.990 | 14 |
+| `no_email_no_gate` | ₹673 | ₹892 | 0.9968 | 0.964 | 0.990 | 15 |
+| `lean` | ₹819 | ₹812 | 0.9957 | 0.968 | 0.990 | 13 |
+
+**Chosen on calibration: `no_email_no_gate`** — drop the email relation and
+the heterophily gate. Calibration cost falls from ₹1,398 to
+₹673.
+
+**It held up.** On test, cost falls from ₹1,836 to
+₹892, PR-AUC rises 0.9892 → 0.9968,
+precision 0.942 → 0.964, recall
+0.968 → 0.990, and false positives fall
+24 → 15. Every candidate that
+removes something beats the full model, so the earlier ablations were reading a real signal
+rather than noise.
+
+**Selection is not free, and the table shows it.** The variant with the lowest *test* cost
+is `lean` (₹812), not the one calibration chose. Picking on
+held-out data costs something against picking with hindsight — that gap is the honest price
+of not cheating, and reporting the calibration-chosen variant rather than the test-optimal
+one is the whole point of the exercise.
+
 ### Does the graph survive being split across machines?
 
 Throughput is not the hard part — per-event cost is already constant in stream length, so

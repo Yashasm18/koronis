@@ -1,0 +1,10 @@
+{
+  "selected_on_calibration": "no_email_no_gate",
+  "selection_beat_full_on_calibration": true,
+  "held_up_on_test": true,
+  "full_test_cost_inr": 1836.0,
+  "selected_test_cost_inr": 892.0,
+  "full_test_pr_auc": 0.9892,
+  "selected_test_pr_auc": 0.9968,
+  "n_seeds": 5
+}
