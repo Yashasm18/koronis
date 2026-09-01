@@ -161,3 +161,55 @@ def test_the_replay_ends_identically_at_every_speed(page):
             f"{speed}x ends in a different state from {base_speed}x: "
             + "; ".join(f"{k}: {base[k]!r} vs {state[k]!r}" for k in differing))
     pg.click("#reset")
+
+
+# The threshold label was drawn first, five pixels above the rule. The threshold
+# is 0.9366 and alerting events saturate at 1.0, so that gap is the densest band
+# in the chart: the dots landed on top of the words and the rule's own dashes
+# struck through them. Nothing failed - the label was *there*, just unreadable.
+_LABEL_GEOMETRY = """() => {
+  const c = document.getElementById('chart'), x = c.getContext('2d');
+  const W = c.width, H = c.height, d = x.getImageData(0, 0, W, H).data;
+  const isRed  = i => d[i+3] > 128 && d[i] > 150 && d[i+1] < 120 && d[i+2] < 120;
+  const isBlue = i => d[i+3] > 128 && d[i+2] > 150 && d[i] < 120;
+
+  const rowRed = new Array(H).fill(0);
+  for (let y = 0; y < H; y++)
+    for (let xx = 0; xx < W; xx++) if (isRed((y*W + xx)*4)) rowRed[y]++;
+  const ruleY = rowRed.indexOf(Math.max(...rowRed));   // the dashed rule
+
+  let n = 0, minY = 1e9, maxY = -1, minX = 1e9, maxX = -1;
+  for (let y = 0; y < H; y++) {
+    if (Math.abs(y - ruleY) <= 3) continue;            // skip the rule itself
+    for (let xx = 0; xx < W; xx++) if (isRed((y*W + xx)*4)) {
+      n++;
+      minY = Math.min(minY, y); maxY = Math.max(maxY, y);
+      minX = Math.min(minX, xx); maxX = Math.max(maxX, xx);
+    }
+  }
+  let blue = 0;
+  if (n) for (let y = minY; y <= maxY; y++)
+    for (let xx = minX; xx <= maxX; xx++) if (isBlue((y*W + xx)*4)) blue++;
+  return {ruleY, labelPx: n, labelTop: minY, labelBottom: maxY, blueOverLabel: blue};
+}"""
+
+
+def test_the_frozen_threshold_label_is_legible(page):
+    pg, _ = page
+    pg.click('.speed button[data-speed="16"]')
+    pg.click("#play")
+    pg.wait_for_function(
+        "() => document.getElementById('play').textContent === 'Replay incident'",
+        timeout=60_000)
+    pg.wait_for_timeout(400)
+    g = pg.evaluate(_LABEL_GEOMETRY)
+
+    assert g["labelPx"] > 80, f"the threshold label is barely drawn at all: {g}"
+    assert g["labelTop"] > g["ruleY"], (
+        "the threshold label sits above the rule, in the band where alerting "
+        f"scores saturate at 1.0: {g}")
+    assert g["blueOverLabel"] == 0, (
+        f"{g['blueOverLabel']} score points are drawn on top of the threshold "
+        f"label, which is what makes it unreadable: {g}")
+
+    pg.click("#reset")

@@ -187,6 +187,22 @@ Every defect below was surfaced by running experiments, not by reading code.
    recording would have kept displaying a retracted claim. It hashes the whole built page
    now. The earlier scoping was an argument, and the ablation for it was never run.
 
+16. **The threshold label was drawn into the busiest band of the chart.** "frozen
+   threshold" was printed five pixels above the dashed rule, and drawn *before* the score
+   points. The threshold is 0.9366 and every alerting event scores 1.0, so those five
+   pixels are the densest part of the chart: the dots landed on top of the words and the
+   rule's own dashes struck through them. Nothing failed — the label was present, correctly
+   positioned relative to the line it annotates, and unreadable. The rule and its label are
+   drawn last now, with the text below the line where the plot is empty, on a chip of the
+   canvas background.
+
+   The test reads the rendered canvas rather than the drawing code: it locates the dashed
+   rule as the row with the most red, treats the remaining red as the label, and asserts
+   the label lies below the rule with **zero** score points drawn over it. On the previous
+   drawing it reports the label at rows 13–19 against a rule at row 25, with 196 blue
+   pixels on top of it. A count of red pixels alone would not have done — that only moves
+   from 440 to 481, which is too small a margin to assert on.
+
 An inference benchmark reporting p50 1.78 ms was also discarded: it was measured while a
 training job ran on the same machine. The idle run is 0.91 ms.
 

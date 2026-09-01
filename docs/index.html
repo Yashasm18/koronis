@@ -1010,13 +1010,6 @@ function drawChart(){
   [0, 900, 1800, 2700, 3600].forEach(function(v){
     if(v>=T_START&&v<=T_END) cx.fillText(mmss(v), X(v), P.t+ph+15);});
 
-  /* frozen threshold */
-  cx.strokeStyle = css("--crit"); cx.setLineDash([5,4]); cx.lineWidth = 1.2;
-  cx.beginPath(); cx.moveTo(P.l, Y(THR)); cx.lineTo(P.l+pw, Y(THR)); cx.stroke();
-  cx.setLineDash([]);
-  cx.fillStyle = css("--crit"); cx.textAlign="left";
-  cx.fillText("frozen threshold", P.l+5, Y(THR)-5);
-
   /* velocity stays at its own (flat) level */
   cx.strokeStyle = css("--calm"); cx.lineWidth = 1.4; cx.beginPath();
   seen.forEach(function(e,j){var yy=Y(0.02); j?cx.lineTo(X(e.t),yy):cx.moveTo(X(e.t),yy);});
@@ -1029,6 +1022,23 @@ function drawChart(){
     cx.beginPath(); cx.arc(X(e.t), Y(e.score), e.alert?2.4:1.5, 0, 6.284); cx.fill();
   });
   cx.globalAlpha = 1;
+
+  /* The threshold is drawn last, over the points, and its label sits BELOW the
+     line. The threshold is 0.9366 and alerting events saturate at 1.0, so the
+     few pixels above the line are the densest part of the whole chart: a label
+     placed there was overprinted by the dots and struck through by the line's
+     own dashes. Below it the plot is empty all the way down to the 0.0 floor.
+     The chip behind the text keeps it legible whatever the traffic does. */
+  cx.strokeStyle = css("--crit"); cx.setLineDash([5,4]); cx.lineWidth = 1.2;
+  cx.beginPath(); cx.moveTo(P.l, Y(THR)); cx.lineTo(P.l+pw, Y(THR)); cx.stroke();
+  cx.setLineDash([]);
+
+  var lbl = "frozen threshold", lx = P.l + 6, ly = Y(THR) + 15;
+  cx.font = '10px "IBM Plex Mono", monospace'; cx.textAlign = "left";
+  cx.fillStyle = css("--canvas-bg");
+  cx.fillRect(lx - 3, ly - 9, cx.measureText(lbl).width + 6, 12);
+  cx.fillStyle = css("--crit");
+  cx.fillText(lbl, lx, ly);
 }
 
 /* ── evidence graph ────────────────────────────────────────── */
