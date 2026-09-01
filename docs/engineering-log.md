@@ -97,6 +97,16 @@ Every defect below was surfaced by running experiments, not by reading code.
    cannot, so `tests/test_site_renders.py` now loads the built page, asserts no script
    error, asserts every table has rows, and asserts the replay actually advances.
 
+11. **A replay so fast it read as a broken button.** The loop advanced the stream clock
+   by a fixed amount per animation frame, which put the whole 4,500-second replay through
+   in **2.9 seconds**. Clicking *Replay incident* appeared to do nothing: by the time you
+   looked, it had finished and the button had reset. Every automated check passed, because
+   every one of them asked whether the replay advanced rather than whether a person could
+   watch it. Pacing is now against the wall clock — which also removes a second defect
+   nobody had noticed, that a 120 Hz display replayed twice as fast as a 60 Hz one — with
+   a 1× / 4× / 16× control for readers who do not want to wait. Tests assert both the pace
+   and that the speed control changes it.
+
 An inference benchmark reporting p50 1.78 ms was also discarded: it was measured while a
 training job ran on the same machine. The idle run is 0.99 ms.
 

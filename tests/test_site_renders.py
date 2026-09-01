@@ -70,6 +70,38 @@ def test_no_undefined_or_nan_reaches_the_page(page):
         assert bad not in text, f"{bad!r} is visible on the page"
 
 
+def test_the_replay_is_watchable_not_instant(page):
+    """It used to finish the whole stream in under three seconds, which read as
+    a dead button. Paced against the wall clock now, so it is also independent
+    of the display's refresh rate."""
+    pg, _ = page
+    pg.click('.tabs button[data-tab="replay"]')
+    pg.click("#reset"); pg.wait_for_timeout(200)
+    pg.click('.speed button[data-speed="1"]')
+    pg.click("#play"); pg.wait_for_timeout(3000)
+    seen = int(pg.eval_on_selector("#m-seen", "e => e.textContent.replace(/[^0-9]/g,'')") or 0)
+    total = pg.evaluate("JSON.parse(document.getElementById('koronis-data').textContent)"
+                        ".replay.events.length")
+    assert 0 < seen < total * 0.5, (
+        f"after 3 s the replay is at {seen}/{total}; a full pass should take tens of "
+        f"seconds at 1x, not finish immediately")
+    pg.click("#reset")
+
+
+def test_speed_control_changes_the_pace(page):
+    pg, _ = page
+    pg.click('.tabs button[data-tab="replay"]')
+    def run(speed, ms):
+        pg.click("#reset"); pg.wait_for_timeout(150)
+        pg.click(f'.speed button[data-speed="{speed}"]')
+        pg.click("#play"); pg.wait_for_timeout(ms)
+        n = int(pg.eval_on_selector("#m-seen", "e => e.textContent.replace(/[^0-9]/g,'')") or 0)
+        pg.click("#reset")
+        return n
+    slow, fast = run(1, 1500), run(16, 1500)
+    assert fast > slow, f"16x ({fast}) did not outpace 1x ({slow})"
+
+
 def test_the_replay_actually_advances(page):
     """The failure this file exists for: the page rendered, and did nothing."""
     pg, errors = page

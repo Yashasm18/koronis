@@ -153,6 +153,12 @@ canvas{display:block;width:100%;background:var(--canvas-bg)}
 .incbar{display:flex;flex-wrap:wrap;gap:8px;align-items:baseline;
   font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--ink-3)}
 .incbar b{color:var(--accent);font-weight:600}
+.speed{display:inline-flex;border:1px solid var(--line);border-radius:4px;overflow:hidden}
+.speed button{font-family:"IBM Plex Mono",monospace;font-size:11px;background:transparent;
+  color:var(--ink-3);border:0;border-right:1px solid var(--line);padding:7px 10px;cursor:pointer}
+.speed button:last-child{border-right:0}
+.speed button.on{background:var(--accent-soft);color:var(--accent)}
+.speed button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 .dossier-wrap{margin-top:10px;border-top:1px solid var(--line);padding-top:8px}
 .dossier-wrap summary{cursor:pointer;font-size:10.5px;letter-spacing:.08em;
   text-transform:uppercase;color:var(--ink-3)}
@@ -214,6 +220,11 @@ td.rng{color:var(--ink-3);font-size:10.5px}
     <div class="bar">
       <button class="act" id="play">Replay incident</button>
       <button class="act ghost" id="reset">Reset</button>
+      <span class="speed" role="group" aria-label="Replay speed">
+        <button type="button" data-speed="1" class="on">1×</button><button
+                type="button" data-speed="4">4×</button><button
+                type="button" data-speed="16">16×</button>
+      </span>
       <span class="stage s0" id="stage">Idle</span>
       <span class="mono" style="color:var(--ink-3);font-size:11px" id="scenario"></span>
     </div>
@@ -825,6 +836,15 @@ drawFront();
 
 /* ── replay state ──────────────────────────────────────────── */
 var i = 0, t = T_START, playing = false, raf = null;
+
+/* The replay is paced against the WALL CLOCK, not against animation frames.
+   Advancing a fixed amount per frame made the whole 4,500-second stream run
+   out in under three seconds - fast enough that clicking the button looked
+   like it had done nothing - and made the speed depend on the display: a
+   120 Hz screen replayed twice as fast as a 60 Hz one. */
+var REPLAY_TARGET_S = 42;                       /* one full pass at 1x */
+var rate = (T_END - T_START) / REPLAY_TARGET_S; /* stream seconds per real second */
+var speed = 1, lastFrame = 0;
 var seen = [], alerts = 0, lastAlert = null, stage = 0;
 
 function stageFor(ring){
@@ -1058,7 +1078,10 @@ function drawGraph(){
 /* ── loop ──────────────────────────────────────────────────── */
 function step(){
   if(!playing) return;
-  t += 26;
+  var now = performance.now();
+  var dt = lastFrame ? Math.min((now - lastFrame) / 1000, 0.25) : 0;
+  lastFrame = now;
+  t += dt * rate * speed;
   while(i < EV.length && EV[i].t <= t){
     var e = EV[i++];
     seen.push(e);
@@ -1071,9 +1094,17 @@ function step(){
   raf = requestAnimationFrame(step);
 }
 el("play").addEventListener("click", function(){
-  if(playing){playing=false; this.textContent="Resume"; cancelAnimationFrame(raf); return;}
+  if(playing){playing=false; this.textContent="Resume"; cancelAnimationFrame(raf); lastFrame=0; return;}
   if(i >= EV.length) doReset();
-  playing = true; this.textContent = "Pause"; step();
+  playing = true; this.textContent = "Pause"; lastFrame = 0; step();
+});
+document.querySelectorAll(".speed button").forEach(function(b){
+  b.addEventListener("click", function(){
+    document.querySelectorAll(".speed button").forEach(function(x){x.classList.remove("on");});
+    b.classList.add("on");
+    speed = Number(b.dataset.speed);
+    lastFrame = 0;                     /* do not credit the gap to the new speed */
+  });
 });
 el("reset").addEventListener("click", doReset);
 
@@ -1103,7 +1134,7 @@ el("copy-dossier").addEventListener("click", function(){
   document.body.removeChild(ta); done(ok);
 });
 function doReset(){
-  playing=false; cancelAnimationFrame(raf);
+  playing=false; cancelAnimationFrame(raf); lastFrame=0;
   i=0; t=T_START; seen=[]; alerts=0; lastAlert=null; gpos={};
   el("play").textContent = "Replay incident"; setStage(0); render();
   el("m-score").textContent = "—";

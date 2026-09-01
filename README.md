@@ -3,7 +3,7 @@
 > Detection of distributed card-testing campaigns that per-entity velocity rules cannot see at any threshold.
 
 [![CI](https://github.com/Yashasm18/koronis/actions/workflows/ci.yml/badge.svg)](https://github.com/Yashasm18/koronis/actions/workflows/ci.yml)
-[![tests](https://img.shields.io/badge/tests-153%20passing-2ea44f)](tests/)
+[![tests](https://img.shields.io/badge/tests-155%20passing-2ea44f)](tests/)
 [![python](https://img.shields.io/badge/python-3.14-3776ab)](https://www.python.org/)
 [![license: MIT](https://img.shields.io/badge/license-MIT-yellow)](LICENSE)
 [![graph libs](https://img.shields.io/badge/graph%20libraries-none-8a3ffc)](koronis/models/layers.py)
@@ -33,7 +33,7 @@ detection is possible at all** — stated as arithmetic, then tested.
 
 ```bash
 python -m venv .venv && .venv/bin/pip install -r requirements.txt
-.venv/bin/python -m pytest tests/ -q          # 153 tests, ~1-2 min
+.venv/bin/python -m pytest tests/ -q          # 155 tests, ~1-2 min
 .venv/bin/python -m koronis.cli ablation      # reproduces the headline table below
 ```
 
