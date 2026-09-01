@@ -125,6 +125,16 @@ Every defect below was surfaced by running experiments, not by reading code.
    intermediate layer is cached now, and parity is asserted at one, two, three and four
    layers rather than at whatever depth happens to be current.
 
+13. **The same replay drew a different graph depending on how fast you watched it.**
+   The evidence graph seeded each node's position from its index inside a 160-event
+   display window. That index depends on how many events arrive per animation frame, which
+   depends on playback speed — so at 1× the graph drew 1,315 lit pixels and at 16× it drew
+   5,032, from identical data. Every number agreed at every speed; only the picture moved,
+   which is why the existing checks passed. Position is now a pure function of the event's
+   index in the append-only `seen` list, and a test plays the stream to completion at 1×,
+   4× and 16× and asserts the end states are identical down to the canvas pixel count. It
+   reproduces the old behaviour when reverted.
+
 An inference benchmark reporting p50 1.78 ms was also discarded: it was measured while a
 training job ran on the same machine. The idle run is 0.91 ms.
 

@@ -1026,7 +1026,7 @@ function drawChart(){
 }
 
 /* ── evidence graph ────────────────────────────────────────── */
-var gc = el("graph"), gx = gc.getContext("2d"), gpos = {};
+var gc = el("graph"), gx = gc.getContext("2d");
 function seeded(n){var s=n*9301+49297;return ((s%233280)/233280);}
 function drawGraph(){
   var d = devicePixelRatio||1, w = gc.clientWidth, h = gc.clientHeight;
@@ -1034,29 +1034,36 @@ function drawGraph(){
   gx.clearRect(0,0,w,h);
   var pad = 18, shown = seen.slice(-160);
 
-  shown.forEach(function(e,j){
-    if(!gpos[e.t]){
-      var a = seeded(j*7+1)*6.283, r = Math.pow(seeded(j*13+5),0.6);
-      gpos[e.t] = e.campaign
-        ? {x:0.62 + Math.cos(a)*r*0.20, y:0.50 + Math.sin(a)*r*0.30}
-        : {x:seeded(j*3+2), y:seeded(j*5+9)};
-    }
+  /* A node's position must depend only on WHICH event it is, never on when it
+     happened to be drawn. Seeding from the index inside this 160-event window
+     tied the layout to how many events arrived per frame, so the same replay
+     drew a different graph at 1x, 4x and 16x - the metrics agreed, the picture
+     did not. `seen` is append-only, so an event's index in it is stable at any
+     speed, and the layout is now a pure function of the event. */
+  var start = seen.length - shown.length;
+  var pos = shown.map(function(e, j){
+    var idx = start + j;
+    var a = seeded(idx*7+1)*6.283, r = Math.pow(seeded(idx*13+5),0.6);
+    return e.campaign
+      ? {x:0.62 + Math.cos(a)*r*0.20, y:0.50 + Math.sin(a)*r*0.30}
+      : {x:seeded(idx*3+2), y:seeded(idx*5+9)};
   });
   var X=function(u){return pad+u*(w-pad*2);}, Y=function(u){return pad+u*(h-pad*2);};
 
+  var camp = [];
+  shown.forEach(function(e, j){ if(e.campaign) camp.push({e:e, p:pos[j]}); });
+
   gx.strokeStyle = css("--edge"); gx.lineWidth = 0.9;
-  var camp = shown.filter(function(e){return e.campaign;});
-  camp.forEach(function(e,j){
-    if(!e.linked) return;
-    var k = Math.min(3, Math.max(1, Math.round(e.linked/24)));
+  camp.forEach(function(c, j){
+    if(!c.e.linked) return;
+    var k = Math.min(3, Math.max(1, Math.round(c.e.linked/24)));
     for(var q=1;q<=k;q++){
       var o = camp[j-q]; if(!o) break;
-      var a=gpos[e.t], b=gpos[o.t]; if(!a||!b) continue;
-      gx.beginPath(); gx.moveTo(X(a.x),Y(a.y)); gx.lineTo(X(b.x),Y(b.y)); gx.stroke();
+      gx.beginPath(); gx.moveTo(X(c.p.x),Y(c.p.y)); gx.lineTo(X(o.p.x),Y(o.p.y)); gx.stroke();
     }
   });
-  shown.forEach(function(e){
-    var p = gpos[e.t]; if(!p) return;
+  shown.forEach(function(e, j){
+    var p = pos[j];
     gx.fillStyle = e.campaign ? css("--node-attack") : css("--node-legit");
     gx.globalAlpha = e.campaign ? 0.95 : 0.5;
     gx.beginPath(); gx.arc(X(p.x), Y(p.y), e.alert?3.2:2, 0, 6.284); gx.fill();
@@ -1064,8 +1071,8 @@ function drawGraph(){
   gx.globalAlpha = 1;
 
   if(stage >= 2 && camp.length){
-    var xs = camp.map(function(e){return X(gpos[e.t].x);});
-    var ys = camp.map(function(e){return Y(gpos[e.t].y);});
+    var xs = camp.map(function(c){return X(c.p.x);});
+    var ys = camp.map(function(c){return Y(c.p.y);});
     var x0=Math.min.apply(null,xs), x1=Math.max.apply(null,xs);
     var y0=Math.min.apply(null,ys), y1=Math.max.apply(null,ys);
     gx.strokeStyle = css(stage>=3?"--crit":"--accent"); gx.lineWidth = 1.3;
@@ -1136,7 +1143,7 @@ el("copy-dossier").addEventListener("click", function(){
 });
 function doReset(){
   playing=false; cancelAnimationFrame(raf); lastFrame=0;
-  i=0; t=T_START; seen=[]; alerts=0; lastAlert=null; gpos={};
+  i=0; t=T_START; seen=[]; alerts=0; lastAlert=null;
   el("play").textContent = "Replay incident"; setStage(0); render();
   el("m-score").textContent = "—";
   el("card-why").innerHTML = "Press <b>Replay incident</b> to stream the held-out campaign one event at a time.";

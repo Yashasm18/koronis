@@ -111,3 +111,53 @@ def test_the_replay_actually_advances(page):
     pg.wait_for_timeout(2500)
     seen = int(pg.eval_on_selector("#m-seen", "e => e.textContent.replace(/[^0-9]/g,'')") or 0)
     assert seen > 0, f"replay did not advance; page errors: {errors}"
+
+
+def _play_to_end(pg, speed):
+    pg.click('.tabs button[data-tab="replay"]')
+    pg.click("#reset"); pg.wait_for_timeout(200)
+    pg.click(f'.speed button[data-speed="{speed}"]')
+    pg.click("#play")
+    for _ in range(900):
+        done = pg.eval_on_selector("#play", "e => e.textContent") == "Replay incident"
+        seen = int(pg.eval_on_selector("#m-seen", "e => e.textContent.replace(/[^0-9]/g,'')") or 0)
+        if done and seen:
+            return seen
+        pg.wait_for_timeout(100)
+    raise AssertionError(f"replay did not finish at {speed}x")
+
+
+def _canvas_ink(pg, cid):
+    return pg.evaluate(f"""() => {{const c = document.getElementById('{cid}');
+        const d = c.getContext('2d').getImageData(0,0,c.width,c.height).data;
+        let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i]) n++; return n;}}""")
+
+
+def test_the_replay_ends_identically_at_every_speed(page):
+    """Playback speed is a viewing choice, not an input to the result.
+
+    The evidence graph used to seed each node's position from its index inside
+    a 160-event display window, which depends on how many events arrive per
+    frame - so the same replay drew a visibly different graph at 1x and 16x
+    while every number agreed. A viewer who changed speed saw a different
+    picture of the same data.
+    """
+    pg, _ = page
+    fields = ["m-seen", "m-score", "m-alerts", "m-clock", "incbar", "fcast",
+              "card-title", "card-score", "dossier"]
+    base = None
+    for speed in (1, 4, 16):
+        _play_to_end(pg, speed)
+        pg.eval_on_selector("#dossier-wrap", "e => e.open = true")
+        pg.wait_for_timeout(150)
+        state = {f: pg.eval_on_selector(f"#{f}", "e => e.textContent.trim()") for f in fields}
+        state["graph_ink"] = _canvas_ink(pg, "graph")
+        state["chart_ink"] = _canvas_ink(pg, "chart")
+        if base is None:
+            base, base_speed = state, speed
+            continue
+        differing = [k for k in base if base[k] != state[k]]
+        assert not differing, (
+            f"{speed}x ends in a different state from {base_speed}x: "
+            + "; ".join(f"{k}: {base[k]!r} vs {state[k]!r}" for k in differing))
+    pg.click("#reset")
