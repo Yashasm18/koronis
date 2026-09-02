@@ -343,6 +343,25 @@ Every defect below was surfaced by running experiments, not by reading code.
    somebody else. The constant is unchanged and still a declared assumption; the reasoning
    behind it no longer claims a loss the merchant does not bear.
 
+23. **A loader that could not run, described as one that could.** `background.py` advertised
+   an IEEE-CIS path against `train_transaction.csv`. `DeviceInfo` is not in that file — it is
+   in `train_identity.csv` — and `pd.read_csv(usecols=...)` drops a column it cannot find
+   without complaining, so the read succeeded and the frame lookup raised a bare `KeyError`.
+   `limitations.md` had recorded where `DeviceInfo` actually lives, in a different bullet,
+   without anyone connecting it to the code that reads it.
+
+   The path is now explicitly unfinished: it raises `NotImplementedError` naming the missing
+   column, the file it belongs to, the ~24% row coverage a join would give a relation the
+   model depends on, and `path=None` as the option every published number uses. The
+   limitations bullet and the demo site both say "unfinished" instead of implying a working
+   alternative that was merely declined.
+
+   Not migrating to IEEE-CIS remains the right call and is unchanged: its native density of
+   ~210 events/hour against the simulator's ~1,500 is the thin-traffic regime of defect 6,
+   and the dataset carries no authorisation outcome at all, so `approved` would have to be
+   synthesised from its fraud flag — the mechanism the detector leans on. The defect was
+   never the decision. It was claiming a capability the code did not have.
+
 An inference benchmark reporting p50 1.78 ms was also discarded: it was measured while a
 training job ran on the same machine. The idle run is 0.91 ms.
 
@@ -362,7 +381,9 @@ the six, listed so the count in the README is checkable rather than remembered.
 
 | 7 | the frontier's **16/16** agreement is a prediction that was tested | under uniform spread it is exact by construction — an implementation check, not a risky prediction (defect 22) |
 
-Six of the seven were found by running an experiment rather than by reading code, and every
+| 8 | the loader **has** an IEEE-CIS path, declined on measured grounds | the path could not run at all: `DeviceInfo` is in a file it never opened (defect 23) |
+
+Six of the eight were found by running an experiment rather than by reading code, and every
 one of them was a claim that flattered the project.
 
 

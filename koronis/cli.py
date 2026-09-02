@@ -1681,6 +1681,9 @@ def replay() -> dict:
             "alert": out["alert"],
             "linked": out["linked_prior_events"],
             "ev": out["evidence"],
+            # Which prior attempts, and via which entity value. The demo
+            # panel names them instead of showing a bare count.
+            "evid": out["evidence_ids"],
             "vel": round(float(vel[i]), 3),
             "vel_alert": bool(vel[i] >= vel_thr),
             "amount": round(float(row["amount"]), 2),

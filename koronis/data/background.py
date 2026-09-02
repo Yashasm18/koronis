@@ -28,9 +28,9 @@ def load_background(path: Path | None, n_rows: int, seed: int,
                     profile: "Profile | None" = None) -> pd.DataFrame:
     """Return `n_rows` canonical background events, all label=0.
 
-    When `path` points at IEEE-CIS train_transaction.csv the entity columns are
-    derived from real fields, preserving real reuse structure. Otherwise a
-    bootstrap sampler produces the same contract with plausible reuse.
+    `path` selects an unfinished IEEE-CIS loader; see `_from_ieee`, which raises
+    rather than pretending. Every published number comes from the bootstrap
+    sampler, which produces the canonical contract with plausible reuse.
     """
     rng = np.random.default_rng(seed)
     if path is not None and Path(path).exists():
@@ -49,10 +49,51 @@ def load_background(path: Path | None, n_rows: int, seed: int,
     return df[EVENT_COLUMNS]
 
 
+#: Columns `_from_ieee` needs, and the file each actually lives in.
+_IEEE_COLUMNS = {
+    "TransactionID": "train_transaction.csv",
+    "TransactionDT": "train_transaction.csv",
+    "TransactionAmt": "train_transaction.csv",
+    "card1": "train_transaction.csv",
+    "card2": "train_transaction.csv",
+    "P_emaildomain": "train_transaction.csv",
+    "addr1": "train_transaction.csv",
+    "isFraud": "train_transaction.csv",
+    "DeviceInfo": "train_identity.csv",        # NOT in train_transaction
+}
+
+
 def _from_ieee(path: Path, n_rows: int, rng) -> pd.DataFrame:
-    cols = {"TransactionID", "TransactionDT", "TransactionAmt", "card1",
-            "card2", "DeviceInfo", "P_emaildomain", "addr1", "isFraud"}
-    raw = pd.read_csv(path, usecols=lambda c: c in cols, nrows=n_rows * 3)
+    """Unfinished. Reads IEEE-CIS if the columns are there, and says so if not.
+
+    This used to be described as a working alternative background. It is not:
+    `DeviceInfo` lives in `train_identity.csv`, not `train_transaction.csv`, so
+    on the file the old docstring named `usecols` silently dropped it and the
+    frame lookup below raised a bare KeyError. Joining identity supplies it on
+    only ~24% of rows, and `device_id` is one of three model relations.
+
+    Two further reasons the path was never finished, both measured and recorded
+    in docs/limitations.md: a contiguous slice runs at ~210 events/hour against
+    the ~1,500 the simulator is tuned to, which is the thin-traffic regime that
+    made an injected campaign trivially separable (defect 6); and IEEE-CIS has
+    no authorisation outcome at all, so `approved` would be modelled from
+    `isFraud` - synthesising the very mechanism the detector leans on.
+
+    It raises instead of half-working, because a loader that silently produces a
+    degraded background is how a published number goes quietly wrong.
+    """
+    raw = pd.read_csv(path, usecols=lambda c: c in _IEEE_COLUMNS, nrows=n_rows * 3)
+    missing = [c for c in _IEEE_COLUMNS if c not in raw.columns]
+    if missing:
+        where = {c: _IEEE_COLUMNS[c] for c in missing}
+        raise NotImplementedError(
+            f"the IEEE-CIS loader is unfinished: {path.name} has no {missing}. "
+            f"Those columns live in {sorted(set(where.values()))} and joining them "
+            "is not implemented - DeviceInfo covers only ~24% of rows even after "
+            "the join, and device_id is one of three model relations. See "
+            "docs/limitations.md for the density measurement behind not using "
+            "this dataset. Pass path=None to use the bootstrap sampler, which is "
+            "what every published number uses.")
     raw = raw.head(n_rows).copy()
     return pd.DataFrame({
         "ts": raw["TransactionDT"].astype(float).to_numpy(),

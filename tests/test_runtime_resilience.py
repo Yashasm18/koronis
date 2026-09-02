@@ -144,3 +144,33 @@ def test_quarantine_does_not_disturb_the_events_around_it(fitted):
 
     assert scores_clean == scores_mixed, (
         "interleaving unscoreable events changed the scores of the good ones")
+
+
+def test_the_ieee_loader_refuses_rather_than_half_working(tmp_path):
+    """A loader that silently degrades the background is how a number goes wrong.
+
+    `DeviceInfo` lives in IEEE-CIS `train_identity.csv`, not the
+    `train_transaction.csv` the loader was documented against, and `usecols`
+    drops a column it cannot find without complaining. The frame lookup then
+    raised a bare KeyError while the docs described the path as a working
+    alternative background. It raises deliberately now, and says where the
+    columns actually are.
+    """
+    import pandas as pd
+    import pytest as _pytest
+
+    from koronis.data.background import load_background
+
+    path = tmp_path / "train_transaction.csv"
+    pd.DataFrame({"TransactionID": [1, 2], "TransactionDT": [0, 1],
+                  "TransactionAmt": [10.0, 20.0], "card1": ["a", "b"],
+                  "card2": ["x", "y"], "P_emaildomain": ["g", "g"],
+                  "addr1": ["1", "2"], "isFraud": [0, 0]}).to_csv(path, index=False)
+
+    with _pytest.raises(NotImplementedError) as err:
+        load_background(path=path, n_rows=2, seed=0)
+
+    message = str(err.value)
+    assert "DeviceInfo" in message, "the error does not name the missing column"
+    assert "train_identity.csv" in message, "the error does not say where it lives"
+    assert "path=None" in message, "the error does not name the working alternative"

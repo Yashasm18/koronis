@@ -97,3 +97,30 @@ def test_batch_parity_holds_at_any_depth(layers):
     assert np.allclose(batch, online, atol=1e-5), (
         f"streaming diverged from batch at {layers} layers "
         f"(max delta {np.abs(batch - online).max():.2e})")
+
+
+def test_evidence_names_the_linked_attempts(fitted):
+    """A count is a schematic; ids are evidence. The panel must be able to say
+    which prior attempts a decision rested on, and through which entity."""
+    det, ev = fitted
+    rows = replay(ev, det, threshold=0.5)
+    linked = [r for r in rows if r["linked_prior_events"] > 0]
+    assert linked, "fixture should produce at least one linked event"
+
+    seen_ids = set()
+    for r in rows:
+        for rel, d in r["evidence_ids"].items():
+            assert set(d) == {"value", "ids", "total"}
+            assert d["total"] == r["evidence"][rel]
+            assert 0 < len(d["ids"]) <= min(d["total"], 6)
+            # every named id must be an event that actually preceded this one
+            assert all(i in seen_ids for i in d["ids"]), (r["event_id"], rel)
+        seen_ids.add(r["event_id"])
+
+
+def test_evidence_ids_do_not_disturb_the_counts(fitted):
+    """`evidence` is consumed by the replay artifact and the site; adding ids
+    must not change what it reports."""
+    det, ev = fitted
+    for r in replay(ev, det, threshold=0.5):
+        assert sum(r["evidence"].values()) == r["linked_prior_events"]

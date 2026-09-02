@@ -19,6 +19,10 @@ import pandas as pd
 import torch
 
 from .models.koronis import KoronisDetector, node_features
+
+# How many linked attempt ids to surface per relation. Enough to be evidence,
+# few enough to stay readable and to keep the replay artifact small.
+EVIDENCE_IDS_PER_RELATION = 6
 from .validate import _finite, entity_key, problems
 
 
@@ -53,6 +57,11 @@ class StreamingKoronis:
         ]
         self._ts: list[float] = []
         self._alerted: list[bool] = []
+        # Event ids, parallel to _ts and evicted with it. Held so the evidence
+        # a decision rests on can name the attempts it linked, rather than
+        # reporting "device: 3". A count is a schematic; ids are evidence an
+        # analyst can pull up.
+        self._eids: list[str] = []
         self._index: dict[str, dict[str, deque]] = {
             rel: defaultdict(deque) for rel in self.relations
         }
@@ -96,7 +105,8 @@ class StreamingKoronis:
                 "event_id": event.get("event_id"),
                 "score": None, "threshold": round(self.threshold, 6),
                 "alert": False, "status": "quarantined", "reasons": faults,
-                "linked_prior_events": 0, "evidence": {}, "ring": self._ring_summary(self._high_ts),
+                "linked_prior_events": 0, "evidence": {}, "evidence_ids": {},
+                "ring": self._ring_summary(self._high_ts),
             }
 
         ts = float(event["ts"])
@@ -105,7 +115,7 @@ class StreamingKoronis:
         idx = self._evicted + len(self._x)
         x = torch.from_numpy(node_features(pd.DataFrame([event]))[0])
 
-        neighbours, evidence = self._neighbours(event, ts)
+        neighbours, evidence, evidence_ids = self._neighbours(event, ts)
 
         with torch.no_grad():
             # Layer k reads its neighbours' layer k-1. Backwards-in-time edges
@@ -125,6 +135,7 @@ class StreamingKoronis:
             cache.append(hidden[k])
         self._ts.append(ts)
         self._alerted.append(alert)
+        self._eids.append(str(event.get("event_id", idx)))
         self._remember(event, idx, ts)
 
         linked = sum(len(n) for n in neighbours)
@@ -137,6 +148,9 @@ class StreamingKoronis:
             "status": "scored",
             "linked_prior_events": int(linked),
             "evidence": evidence,
+            # Which prior attempts, and through which entity value. `evidence`
+            # keeps its counts so existing consumers are untouched.
+            "evidence_ids": evidence_ids,
             "ring": self._ring_summary(ts),
         }
 
@@ -145,7 +159,7 @@ class StreamingKoronis:
     def _neighbours(self, event, ts: float):
         """Prior events inside the window sharing an entity, per relation."""
         cutoff = ts - self.window_s
-        out, evidence = [], {}
+        out, evidence, detail = [], {}, {}
         for rel in self.relations:
             key = entity_key(event.get(rel))
             # An absent value is not a shared value. Interning it as the string
@@ -160,7 +174,16 @@ class StreamingKoronis:
                 picked = list(bucket)[-self.max_degree:]
             out.append(picked)
             evidence[rel] = len(picked)
-        return out, evidence
+            if picked:
+                # Most recent first, and capped: an analyst reads a handful,
+                # and the replay artifact is shipped to a browser.
+                recent = picked[-EVIDENCE_IDS_PER_RELATION:][::-1]
+                detail[rel] = {
+                    "value": key,
+                    "ids": [self._eids[i - self._evicted] for i in recent],
+                    "total": len(picked),
+                }
+        return out, evidence, detail
 
     def _remember(self, event, idx: int, ts: float) -> None:
         for rel in self.relations:
@@ -188,7 +211,7 @@ class StreamingKoronis:
             drop += 1
         if not drop:
             return
-        del self._ts[:drop], self._alerted[:drop], self._x[:drop]
+        del self._ts[:drop], self._alerted[:drop], self._x[:drop], self._eids[:drop]
         for cache in self._h:
             del cache[:drop]
         self._evicted += drop

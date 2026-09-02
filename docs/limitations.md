@@ -23,8 +23,13 @@ data generator, not the model — and it has not been made.
 This is a **semi-synthetic proof of concept**, not production fraud detection.
 
 - **Background traffic is synthetic, and keeping it that way was a measured call.** The
-  loader has an IEEE-CIS path ([`background.py`](../koronis/data/background.py)) and the real
-  dataset was pulled and profiled. In a contiguous slice its native density is ~210
+  loader has an **unfinished** IEEE-CIS path
+  ([`background.py`](../koronis/data/background.py)) — it raises `NotImplementedError`
+  rather than half-working, and this bullet used to describe it as though it ran. It cannot:
+  `DeviceInfo` is in `train_identity.csv`, not the `train_transaction.csv` the loader was
+  documented against, so the column was silently dropped and the frame lookup raised. After
+  a join it covers ~24% of rows, and `device_id` is one of three model relations. The real
+  dataset was pulled and profiled before any of that mattered. In a contiguous slice its native density is ~210
   events/hour (the first 6,000 rows span 28 h); the bootstrap sampler runs at ~1,500
   events/hour *by design*, because thin background was a corrected defect — at low density
   an injected campaign becomes the majority of the traffic in its own window and

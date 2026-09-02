@@ -134,6 +134,12 @@ canvas{display:block;width:100%;background:var(--canvas-bg)}
 .ev .k{font-family:"IBM Plex Mono",monospace;font-size:9.5px;letter-spacing:.07em;
   text-transform:uppercase;color:var(--ink-3)}
 .ev .v{font-family:"IBM Plex Mono",monospace;font-size:17px;font-variant-numeric:tabular-nums}
+.links{display:flex;flex-direction:column;gap:5px}
+.evrow{display:grid;grid-template-columns:auto 1fr;gap:10px;align-items:baseline;
+  font-family:"IBM Plex Mono",monospace;font-size:10.5px}
+.evrel{color:var(--ink-2);white-space:nowrap}
+.evrel code{color:var(--accent);font-size:10px}
+.evids{color:var(--ink-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .why{font-size:12.5px;color:var(--ink-2);line-height:1.55}
 .why b{color:var(--ink);font-weight:600}
 .ladder{display:flex;flex-direction:column;gap:6px;border-top:1px solid var(--line-soft);padding-top:11px}
@@ -269,6 +275,7 @@ td.rng{color:var(--ink-3);font-size:10.5px}
           <div class="lead"><strong id="card-title">Awaiting traffic</strong>
             <span class="mono" id="card-score" style="color:var(--ink-3)"></span></div>
           <div class="ev" id="card-ev"></div>
+          <div class="links" id="card-links"></div>
           <div class="why" id="card-why">Press <b>Replay incident</b> to stream the held-out campaign one event at a time.</div>
           <div class="ladder">
             <span class="lk">Expected cost by action — lowest wins</span>
@@ -435,12 +442,15 @@ td.rng{color:var(--ink-3);font-size:10.5px}
         <p>Background traffic and campaigns are generated, not observed. Ground truth exists
         because it was constructed. The hold-out extrapolates to a campaign spread wider than
         anything in training, but that is not the same as detecting a campaign in the wild.</p>
-        <p>The loader has a path for the real IEEE-CIS transaction set. It was obtained and
-        profiled, then deliberately not used: a contiguous slice runs at ~210 events/hour
-        against the ~1,500 the simulator is tuned to, and at that density an injected campaign
-        dominates its own window — the thin-traffic regime a previous fix removed. Matching
-        the density by compressing IEEE's timeline would discard the real arrival structure
-        that is the point of using it.</p>
+        <p>The loader has an <b>unfinished</b> path for the real IEEE-CIS transaction set;
+        it raises rather than half-working. The dataset was obtained and profiled, then
+        deliberately not used: a contiguous slice runs at ~210 events/hour against the ~1,500
+        the simulator is tuned to, and at that density an injected campaign dominates its own
+        window — the thin-traffic regime a previous fix removed. Matching the density by
+        compressing IEEE's timeline would discard the real arrival structure that is the point
+        of using it. IEEE-CIS also carries no authorisation outcome, so <i>approved</i> would
+        have to be modelled from its fraud flag — synthesising the mechanism the detector
+        leans on.</p>
         <h3>What it will not catch</h3>
         <p>An attacker who uses genuinely fresh infrastructure for every single attempt leaves
         no graph signal. That limit is real — and it is also the point: driving spread that
@@ -883,6 +893,21 @@ function updateCard(e){
   el("card-t").textContent = "t = " + e.t.toFixed(1) + " s";
   el("card-score").textContent = "score " + e.score.toFixed(3) + " / thr " + THR.toFixed(3);
   var ev = e.ev;
+  /* Named linked attempts, when the replay artifact carries them. A count
+     reads as a mock-up on camera; ids read as evidence. */
+  var evid = e.evid || {};
+  var LABEL = {device_id: "device", ip_id: "IP", bin_id: "BIN range",
+               email_domain: "email domain"};
+  var lines = Object.keys(evid).map(function(rel){
+    var d = evid[rel], more = d.total > d.ids.length
+      ? " +" + (d.total - d.ids.length) + " more" : "";
+    return '<div class="evrow"><span class="evrel">' + (LABEL[rel] || rel) +
+      ' <code>' + d.value + '</code></span><span class="evids">' +
+      d.ids.join(", ") + more + '</span></div>';
+  }).join("");
+  el("card-links").innerHTML = lines
+    ? '<div class="lk">Linked attempts</div>' + lines : "";
+
   el("card-ev").innerHTML =
     '<div><span class="k">Linked attempts</span><span class="v">'+e.linked+'</span></div>' +
     '<div><span class="k">Device links</span><span class="v">'+ev.device_id+'</span></div>' +
