@@ -1,3 +1,27 @@
+"""Labelled card-testing campaigns, generated for evaluation. **Defence-only.**
+
+This is the file in the repository whose name looks most alarming, so what it is
+and is not belongs at the top of it rather than in a docstring further down.
+
+It operates on **in-memory dataframes only**. It makes no network call and can
+make none - `tests/test_defence_only.py` walks the AST of every module in the
+package and fails on any import that could reach outside the process. It uses no
+real BIN ranges, no real card numbers and no real cardholder data; every
+identifier it emits is a synthetic label such as `camp_0_3c91727f_d24`, and
+`tests/test_defence_only.py` asserts that none of them could be mistaken for
+card data. It cannot be pointed at an external system, because there is nothing
+here that reaches one.
+
+It reproduces only characteristics already published in Visa's anti-enumeration
+guidance: many attempts, small amounts, spread across entities, mostly declined.
+Nothing here is a technique a defender does not already have to handle.
+
+**Why a detection project generates attacks at all.** Without labelled campaigns
+there is no ground truth, and without ground truth there is no measured precision,
+no measured recall, and no false-positive cost - the numbers the rest of this
+repository is built to report. The generator is what makes the honest metrics
+possible; it is a requirement of the evaluation, not a capability of the product.
+"""
 import numpy as np
 import pandas as pd
 
@@ -6,11 +30,10 @@ from .schema import CampaignSpec, EVENT_COLUMNS
 
 def inject(background: pd.DataFrame, specs: list[CampaignSpec],
            seed: int) -> pd.DataFrame:
-    """Add labeled card-testing campaigns to a background stream.
+    """Add labelled card-testing campaigns to a background stream.
 
-    Defense-only: this operates on in-memory dataframes, makes no network
-    calls, and uses no real BIN ranges. It exists to produce labeled test data,
-    which is what makes measured precision and recall possible at all.
+    Defence-only; see the module docstring above for the full statement and the
+    test that enforces it.
     """
     rng = np.random.default_rng(seed)
     frames = [background]
