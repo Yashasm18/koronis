@@ -10,7 +10,7 @@ python -m venv .venv
 .venv/bin/pip install -r requirements.txt -r requirements-dev.txt
 .venv/bin/python -m playwright install chromium     # for the site-render tests
 .venv/bin/python site/build.py                      # the site tests need docs/index.html
-.venv/bin/python -m pytest tests/ -q                # 220 tests, ~2 min
+.venv/bin/python -m pytest tests/ -q                # 234 tests, ~2 min
 ```
 
 `requirements-dev.txt` is test-only. The suite runs without it — the eight tests that
@@ -23,7 +23,7 @@ Python 3.14 is the tested version (see [`.github/workflows/ci.yml`](.github/work
 
 Every headline claim is backed by a **test that asserts the property**, not code that
 merely intends it. This is the whole convention, and most of it was learned by getting it
-wrong: [`docs/engineering-log.md`](docs/engineering-log.md) records sixteen defects and
+wrong: [`docs/engineering-log.md`](docs/engineering-log.md) records eighteen defects and
 what each one cost. If you add or change a claim, add the assertion that would fail if it
 broke — and check that it *does* fail, by breaking it on purpose.
 

@@ -1,0 +1,15 @@
+family,capacity,params,pr_auc
+graph net,8 wide x 1 deep,219,0.6775
+graph net,32 wide x 2 deep,5007,0.9666
+graph net,32 wide x 3 deep,9171,0.9915
+graph net,128 wide x 3 deep,134931,0.9894
+graph net,256 wide x 3 deep,531987,0.0596
+per-event GBDT,50 trees x 31 leaves,1550,0.2891
+per-event GBDT,300 trees x 31 leaves,9300,0.2572
+per-event GBDT,1500 trees x 63 leaves,94500,0.2244
+per-event GBDT,4000 trees x 255 leaves,1020000,0.2233
+per-event net,8 wide x 1 deep,219,0.1621
+per-event net,32 wide x 2 deep,5007,0.237
+per-event net,32 wide x 3 deep,9171,0.31
+per-event net,128 wide x 3 deep,134931,0.3279
+per-event net,256 wide x 3 deep,531987,0.0478

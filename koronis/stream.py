@@ -19,6 +19,7 @@ import pandas as pd
 import torch
 
 from .models.koronis import KoronisDetector, node_features
+from .validate import _finite, entity_key, problems
 
 
 class StreamingKoronis:
@@ -55,16 +56,53 @@ class StreamingKoronis:
         self._index: dict[str, dict[str, deque]] = {
             rel: defaultdict(deque) for rel in self.relations
         }
+        # Insertion order per relation, so eviction can retire index keys as
+        # well as cache rows. Without this the deques emptied but the dict kept
+        # a key per distinct value seen - and a card-testing campaign mints a
+        # fresh entity per attempt, so that dict is exactly what grows.
+        self._ins: dict[str, deque] = {rel: deque() for rel in self.relations}
+
+        # Caches are addressed by absolute event number and stored from
+        # `_evicted` onwards, so eviction does not renumber anything already
+        # handed out. Without this the caches grew with total traffic rather
+        # than with the window: 3,120 events through a 60 s window left 3,120
+        # entries in every layer while 12 events were actually in scope.
+        self._evicted = 0
+        self._high_ts = float("-inf")
+
+        self.quarantined = 0
+        self.reasons: dict[str, int] = defaultdict(int)
 
     # ------------------------------------------------------------------ core
 
     def push(self, event) -> dict:
-        """Score one event using only events already seen."""
+        """Score one event using only events already seen.
+
+        An event that cannot be scored honestly is quarantined rather than
+        scored anyway: `score` comes back None with a reason, instead of the
+        NaN that used to compare False against the threshold and report itself
+        as "no alert".
+        """
         if isinstance(event, pd.Series):
             event = event.to_dict()
 
+        faults = problems(event)
+        if faults:
+            self.quarantined += 1
+            for f in faults:
+                self.reasons[f] += 1
+            return {
+                "ts": float(event["ts"]) if _finite(event.get("ts")) else None,
+                "event_id": event.get("event_id"),
+                "score": None, "threshold": round(self.threshold, 6),
+                "alert": False, "status": "quarantined", "reasons": faults,
+                "linked_prior_events": 0, "evidence": {}, "ring": self._ring_summary(self._high_ts),
+            }
+
         ts = float(event["ts"])
-        idx = len(self._x)
+        self._high_ts = max(self._high_ts, ts)
+        self._evict()
+        idx = self._evicted + len(self._x)
         x = torch.from_numpy(node_features(pd.DataFrame([event]))[0])
 
         neighbours, evidence = self._neighbours(event, ts)
@@ -81,7 +119,7 @@ class StreamingKoronis:
                 hidden.append(h)
             score = float(torch.sigmoid(self.net.head(h)).item())
 
-        alert = score >= self.threshold
+        alert = bool(score >= self.threshold)
         self._x.append(x)
         for k, cache in enumerate(self._h):        # layers 1..L-1 only
             cache.append(hidden[k])
@@ -95,7 +133,8 @@ class StreamingKoronis:
             "event_id": event.get("event_id"),
             "score": round(score, 6),
             "threshold": round(self.threshold, 6),
-            "alert": bool(alert),
+            "alert": alert,
+            "status": "scored",
             "linked_prior_events": int(linked),
             "evidence": evidence,
             "ring": self._ring_summary(ts),
@@ -108,10 +147,15 @@ class StreamingKoronis:
         cutoff = ts - self.window_s
         out, evidence = [], {}
         for rel in self.relations:
-            bucket = self._index[rel].get(str(event[rel]))
+            key = entity_key(event.get(rel))
+            # An absent value is not a shared value. Interning it as the string
+            # "None" linked every event with a missing device fingerprint to
+            # every other one, inventing a ring out of missing data.
+            bucket = self._index[rel].get(key) if key is not None else None
             picked: list[int] = []
             if bucket:
-                while bucket and self._ts[bucket[0]] < cutoff:
+                while bucket and (bucket[0] < self._evicted
+                                  or self._at(bucket[0]) < cutoff):
                     bucket.popleft()               # expire, bounding memory
                 picked = list(bucket)[-self.max_degree:]
             out.append(picked)
@@ -120,16 +164,57 @@ class StreamingKoronis:
 
     def _remember(self, event, idx: int, ts: float) -> None:
         for rel in self.relations:
-            self._index[rel][str(event[rel])].append(idx)
+            key = entity_key(event.get(rel))
+            if key is not None:
+                self._index[rel][key].append(idx)
+                self._ins[rel].append((idx, key))
 
-    @staticmethod
-    def _stack(indices: list[int], store: list[torch.Tensor]):
+    def _at(self, idx: int) -> float:
+        """Timestamp of absolute event `idx`."""
+        return self._ts[idx - self._evicted]
+
+    def _evict(self) -> None:
+        """Drop events the window can no longer reach.
+
+        `_neighbours` never looks further back than `high_ts - window_s`, so
+        anything older is unreachable and dropping it cannot change a score.
+        Eviction is driven by the highest timestamp seen rather than by this
+        event's, so a mildly out-of-order arrival cannot discard state that a
+        later in-order event still needs.
+        """
+        cutoff = self._high_ts - self.window_s
+        drop = 0
+        while drop < len(self._ts) and self._ts[drop] < cutoff:
+            drop += 1
+        if not drop:
+            return
+        del self._ts[:drop], self._alerted[:drop], self._x[:drop]
+        for cache in self._h:
+            del cache[:drop]
+        self._evicted += drop
+
+        for rel in self.relations:
+            log, index = self._ins[rel], self._index[rel]
+            while log and log[0][0] < self._evicted:
+                idx, key = log.popleft()
+                bucket = index.get(key)
+                if bucket is None:
+                    continue
+                if bucket and bucket[0] == idx:
+                    bucket.popleft()
+                if not bucket:
+                    del index[key]
+
+    def _stack(self, indices: list[int], store: list[torch.Tensor]):
         if not indices:
             return None
-        return torch.stack([store[i] for i in indices])
+        return torch.stack([store[i - self._evicted] for i in indices])
 
     def _ring_summary(self, ts: float) -> dict:
         """Rolling view of what has alerted inside the current window."""
+        if ts == float("-inf"):
+            return {"alerts_in_window": 0, "first_alert_ts": None,
+                    "seconds_since_first_alert": None}
         cutoff = ts - self.window_s
         alerts = [i for i, (t, a) in enumerate(zip(self._ts, self._alerted))
                   if a and t >= cutoff]

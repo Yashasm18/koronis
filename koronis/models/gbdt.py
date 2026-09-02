@@ -26,13 +26,17 @@ def transaction_features(events: pd.DataFrame) -> pd.DataFrame:
 
 
 class GBDTDetector:
-    def __init__(self, seed: int):
+    def __init__(self, seed: int, n_estimators: int = 300, num_leaves: int = 31):
         self.seed = seed
+        # Capacity is a parameter so `koronis.cli ceiling` can sweep it. The
+        # defaults are the headline baseline's and are not changed by that sweep.
+        self.n_estimators, self.num_leaves = n_estimators, num_leaves
         self.model: lgb.LGBMClassifier | None = None
 
     def fit(self, events: pd.DataFrame) -> None:
         self.model = lgb.LGBMClassifier(
-            n_estimators=300, learning_rate=0.05, num_leaves=31,
+            n_estimators=self.n_estimators, learning_rate=0.05,
+            num_leaves=self.num_leaves,
             class_weight="balanced", random_state=self.seed, verbose=-1)
         self.model.fit(transaction_features(events), events["label"].to_numpy())
 

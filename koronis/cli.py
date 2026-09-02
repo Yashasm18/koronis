@@ -677,6 +677,235 @@ def online(n_streams: int = 6) -> pd.DataFrame:
     return df
 
 
+
+
+# ------------------------------------------------------------------- ceiling
+def ceiling(trials: int = 3) -> pd.DataFrame:
+    """Is the gap a modelling gap, or an information gap?
+
+    Every headline comparison in this repo is against per-transaction models, so
+    the obvious objection is that the baseline was simply too small - that a
+    bigger learner, or a more fashionable one, would close it. That is testable
+    without guessing: hold the per-event feature set fixed, scale capacity over
+    two unrelated model families, and see where each one stops.
+
+    The families are chosen to fail differently. LightGBM at increasing trees
+    and leaves is a strong tabular learner with a different inductive bias from
+    a neural net; the Koronis architecture with `use_edges=False` is the *same*
+    network as the graph model with only the edges removed, which isolates the
+    edges rather than the architecture.
+
+    This is also the honest answer to "why is there no language model in here".
+    A transformer reading one transaction is another per-event model, and the
+    ceiling below is a property of what a single authorisation contains, not of
+    who is reading it. A model given the neighbourhood as text is no longer a
+    per-event model - it is doing the graph's job, at a per-event budget
+    measured here at 0.91 ms (`koronis.cli benchmark`).
+    """
+    train = _train_set(0)
+    rows = []
+
+    grid_gbdt = [(50, 31), (300, 31), (1500, 63), (4000, 255)]
+    grid_net = [(8, 1), (32, 2), (32, 3), (128, 3), (256, 3)]
+
+    for seed in range(trials):
+        ev = _sized_stream(900 + seed * 11, TEST_K, TEST_CAMO, seed)
+        y = ev["label"].to_numpy()
+
+        for n_est, leaves in grid_gbdt:
+            m = GBDTDetector(seed=seed, n_estimators=n_est, num_leaves=leaves)
+            m.fit(train)
+            rows.append({"family": "per-event GBDT",
+                         "capacity": f"{n_est} trees x {leaves} leaves",
+                         "params": n_est * leaves, "seed": seed,
+                         "pr_auc": average_precision_score(y, m.score_events(ev))})
+
+        for hidden, layers in grid_net:
+            for use_edges, family in ((False, "per-event net"), (True, "graph net")):
+                m = KoronisDetector(hidden=hidden, layers=layers, seed=seed,
+                                    use_edges=use_edges, window_s=WINDOW_S)
+                # Same training budget as every published number (`_fit_all`).
+                # An unfair budget would make this comparison meaningless in
+                # the direction that flatters the conclusion.
+                m.fit(train, epochs=60)
+                rows.append({"family": family,
+                             "capacity": f"{hidden} wide x {layers} deep",
+                             "params": sum(p.numel() for p in m.net.parameters()),
+                             "seed": seed,
+                             "pr_auc": average_precision_score(y, _raw(m.score_events(ev)))})
+
+    df = pd.DataFrame(rows)
+    med = (df.groupby(["family", "capacity", "params"])["pr_auc"]
+             .median().round(4).reset_index()
+             .sort_values(["family", "params"]))
+    RESULTS.mkdir(exist_ok=True)
+    df.to_csv(RESULTS / "ceiling_raw.csv", index=False)
+    med.to_csv(RESULTS / "ceiling.csv", index=False)
+
+    best = med.groupby("family")["pr_auc"].max()
+    json.dump({"best_by_family": {k: float(v) for k, v in best.items()},
+               "trials": trials},
+              open(RESULTS / "ceiling.json", "w"), separators=(",", ":"))
+
+    print(f"\nper-event ceiling vs the graph, {trials} trials, medians\n")
+    print(med.to_string(index=False))
+    print("\nbest PR-AUC by family:")
+    print(best.round(4).to_string())
+    return med
+
+
+# ---------------------------------------------------------------- resilience
+# Fault injection. Every fault here was found by probing the live streaming
+# path, not imagined: each one used to be silent, which is the property that
+# made them dangerous. A detector that answers "no alert" when it means "I
+# could not read this event" is worse than one that stops.
+def _corrupt(events: pd.DataFrame, kind: str, rate: float, seed: int):
+    ev = events.copy()
+    rng = np.random.default_rng(seed)
+    hit = rng.random(len(ev)) < rate
+
+    if kind == "clean":
+        return ev, np.zeros(len(ev), dtype=bool)
+    if kind == "null_device":
+        ev["device_id"] = ev["device_id"].astype(object)
+        ev.loc[hit, "device_id"] = None
+    elif kind == "placeholder_device":
+        ev["device_id"] = ev["device_id"].astype(object)
+        # The upstream mistake this guards against: a null replaced by a
+        # constant before it ever reaches the detector. It is then an ordinary
+        # value, indistinguishable from a device that really is shared.
+        ev.loc[hit, "device_id"] = "MISSING_DEVICE"
+    elif kind == "nan_amount":
+        ev.loc[hit, "amount"] = float("nan")
+    elif kind == "dropped_approved":
+        # `approved` is a bool column; a null cannot live in it without a cast,
+        # which is itself how this fault reaches production - the null is lost
+        # at the boundary rather than inside the model.
+        ev["approved"] = ev["approved"].astype(object)
+        ev.loc[hit, "approved"] = None
+    elif kind == "entity_explosion":
+        # A fresh device per attempt - the shape a card-testing ring already
+        # has, pushed to every event, so the index cannot amortise anything.
+        ev["device_id"] = [f"x{i}" for i in range(len(ev))]
+    else:
+        raise ValueError(kind)
+    return ev, hit
+
+
+# The placeholder is swept either side of the link-share cap on purpose. Above
+# the cap the frequency guard already refuses to link on it; below the cap that
+# guard is silent, and `entity_key` is the only thing standing between a missing
+# device fingerprint and an invented ring.
+SCENARIOS = [
+    ("clean", 0.00),
+    ("null_device", 0.01),
+    ("placeholder_device", 0.01),
+    ("null_device", 0.10),
+    ("placeholder_device", 0.10),
+    ("nan_amount", 0.05),
+    ("dropped_approved", 0.05),
+    ("entity_explosion", 1.00),
+]
+
+
+def resilience(n_streams: int = 4) -> pd.DataFrame:
+    """What the detector does when the stream is not clean.
+
+    Injects one fault class at a time into a held-out stream and measures the
+    consequence, with the model and threshold frozen throughout. The claim being
+    tested is not "nothing changes" - a corrupted event genuinely cannot be
+    scored - but that the failure is **loud and bounded**: quarantined and
+    counted rather than scored NaN, unable to invent links out of missing data,
+    and unable to grow memory past the window.
+
+    `placeholder_device` is the control that makes the point. It is the same
+    missing data as `null_device`, except a well-meaning upstream step replaced
+    the null with a constant first. The detector cannot tell that constant from
+    a device that really is shared, which is why the null has to survive intact
+    all the way to `entity_key`.
+    """
+    train = _train_set(0)
+    _, _, kor = _fit_all(train)
+    calib = _calibration_set(2)
+    thr, _ = cost_optimal_threshold(_raw(kor.score_events(calib)),
+                                    calib["label"].to_numpy(),
+                                    COST_PER_ATTEMPT_INR, COST_PER_FALSE_BLOCK_INR)
+
+    rows = []
+    for kind, rate in SCENARIOS:
+        per = []
+        for j in range(n_streams):
+            ev = _sized_stream(900 + j * 11, TEST_K, TEST_CAMO, j)
+            labels = ev["label"].to_numpy()
+            bad, hit = _corrupt(ev, kind, rate, seed=j)
+
+            stream = StreamingKoronis(kor, threshold=thr, window_s=WINDOW_S)
+            inc = StreamingIncidents(threshold=thr, freq_window_s=WINDOW_S)
+            peak, alerts, nan_scores, hit_links = 0, 0, 0, 0
+            for i, (_, row) in enumerate(bad.iterrows()):
+                out = stream.push(row)
+                peak = max(peak, len(stream._x))
+                if out["score"] is None:
+                    continue
+                # Device links reported for an event whose device was destroyed.
+                # This is coordination read out of missing data, counted before
+                # the alert threshold can hide it - the incident-level view
+                # cannot see it, because linking only happens above threshold.
+                if hit[i]:
+                    hit_links += out["evidence"].get("device_id", 0)
+                if not np.isfinite(out["score"]):
+                    nan_scores += 1                # must never happen
+                if out["alert"]:
+                    alerts += 1
+                inc.push(row, float(out["score"]), row=i)
+
+            groups = list(inc.groups().values())
+            biggest = max(groups, key=len) if groups else []
+            # An incident of two or more events, none of which is a campaign
+            # event, is coordination the detector invented. This is the number
+            # the missing-entity rule exists to hold at zero.
+
+            scored = len(bad) - stream.quarantined
+            # Recall is over campaign events the detector was actually given a
+            # readable copy of; the quarantined ones are reported separately
+            # rather than folded in, because losing them is the documented
+            # behaviour, not a detection failure.
+            found = int(labels[biggest].sum()) if len(biggest) else 0
+            in_window = int(bad["ts"].gt(bad["ts"].max() - WINDOW_S).sum())
+
+            per.append({
+                "quarantined": stream.quarantined,
+                "scored": scored,
+                "nan_scores": nan_scores,
+                "alerts": alerts,
+                "incidents": len(groups),
+                "device_links_on_corrupted": hit_links,
+                "largest_incident": len(biggest),
+                "largest_purity": round(float(labels[biggest].mean()), 4) if len(biggest) else float("nan"),
+                "campaign_recall": round(found / max(int(labels.sum()), 1), 4),
+                "peak_cache_rows": peak,
+                "events_in_window": in_window,
+                "events_total": len(bad),
+            })
+
+        med = pd.DataFrame(per).median().round(4)
+        rows.append({"fault": kind, "rate": rate, **med.to_dict()})
+
+    df = pd.DataFrame(rows)
+    RESULTS.mkdir(exist_ok=True)
+    df.to_csv(RESULTS / "resilience.csv", index=False)
+
+    print("\nfault injection, frozen model and threshold, medians over "
+          f"{n_streams} held-out streams\n")
+    print(df.to_string(index=False))
+    print("\ninvariants, both of which used to be violated silently:")
+    print("  nan_scores        must be 0 - a NaN score compares False against "
+          "the threshold and reports itself as 'no alert'")
+    print("  device_links_on_corrupted must be 0 wherever the device was "
+          "destroyed - any link there is coordination read out of missing data")
+    return df
+
+
 # Architecture ablations. These test the MODEL, not the data sources the
 # mechanism ablation covers: the heterophily gate and the learned relation
 # attention are design claims made in layers.py, and until they are removed
@@ -1376,5 +1605,6 @@ if __name__ == "__main__":
      "mechanism": mechanism, "incidents": incidents, "drift": drift,
      "relations": relations, "aperture": aperture,
      "architecture": architecture, "online": online,
+     "resilience": resilience, "ceiling": ceiling,
      "sharding": sharding, "select": select,
      "replicate": replicate, "capacity": capacity}[cmd]()

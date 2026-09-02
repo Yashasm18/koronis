@@ -27,6 +27,15 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 EVAL = (ROOT / "docs" / "evaluation.md").read_text()
 
 
+def _norm(text: str) -> str:
+    """Compare figures, not emphasis. Bold and digit grouping are the doc's
+    business; the numbers inside them are the artifact's."""
+    return text.replace("**", "").replace(",", "")
+
+
+EVAL_NORM = _norm(EVAL)
+
+
 def _rows(name):
     with (ROOT / "results" / name).open() as fh:
         return list(csv.DictReader(fh))
@@ -81,6 +90,27 @@ def reliability_rows():
         yield (f"| {_f(r,'predicted')} | {_f(r,'observed')} | {_i(r,'count')} |")
 
 
+def resilience_rows():
+    for r in _rows("resilience.csv"):
+        yield ("| `{}` | {:.0f}% | {} | {} | {} | {} | {} |".format(
+            r["fault"], float(r["rate"]) * 100,
+            _i(r, "quarantined"), _i(r, "nan_scores"),
+            _i(r, "device_links_on_corrupted"),
+            _f(r, "campaign_recall"), _i(r, "peak_cache_rows")))
+
+
+def ceiling_rows():
+    for r in _rows("ceiling.csv"):
+        # The 256-wide rows are deliberately not published: both families
+        # diverge there under the shared budget, which is a training failure
+        # rather than a ceiling. They stay in the artifact.
+        if r["capacity"].startswith("256"):
+            continue
+        yield ("| {} | {} | {:,} | {} |".format(
+            r["family"], r["capacity"].replace(" x ", " × "),
+            int(r["params"]), _f(r, "pr_auc", 4)))
+
+
 def policy_rows():
     labels = {"always_allow": "always allow", "always_hold": "always hold",
               "event_thresholding": "event-by-event thresholding",
@@ -101,12 +131,14 @@ TABLES = {
     "merchant vs gateway aperture": aperture_rows,
     "incident reliability": reliability_rows,
     "response policy": policy_rows,
+    "failure behaviour": resilience_rows,
+    "per-event ceiling": ceiling_rows,
 }
 
 
 @pytest.mark.parametrize("name", sorted(TABLES))
 def test_the_published_table_matches_the_artifact_it_came_from(name):
-    missing = [row for row in TABLES[name]() if row not in EVAL]
+    missing = [row for row in TABLES[name]() if _norm(row) not in EVAL_NORM]
     assert not missing, (
         f"the {name} table in docs/evaluation.md does not match results/. "
         f"These rows, rendered from the artifact, are not in the document:\n  "

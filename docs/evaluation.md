@@ -555,6 +555,111 @@ Entity ids are namespaced per merchant. Without that, two merchants would reuse 
 `d17` and the pooled graph would link strangers — the gateway view would then win on an
 artefact. A test asserts no background entity is shared across merchants.
 
+### The per-event ceiling
+
+Every headline comparison here is against per-transaction models, so the obvious objection
+is that the baselines were simply too small — that a bigger learner, or a more fashionable
+one, would close the gap. That is testable rather than arguable
+(`python -m koronis.cli ceiling`, 3 trials, medians). The per-event feature set is held
+fixed while capacity is scaled across two families with different inductive biases, on the
+**same 60-epoch budget as every published number**.
+
+| family | capacity | parameters | PR-AUC |
+|---|---|---:|---:|
+| per-event GBDT | 50 trees × 31 leaves | 1,550 | **0.2891** |
+| per-event GBDT | 300 trees × 31 leaves | 9,300 | 0.2572 |
+| per-event GBDT | 1500 trees × 63 leaves | 94,500 | 0.2244 |
+| per-event GBDT | 4000 trees × 255 leaves | 1,020,000 | 0.2233 |
+| per-event net | 8 wide × 1 deep | 219 | 0.1621 |
+| per-event net | 32 wide × 2 deep | 5,007 | 0.2370 |
+| per-event net | 32 wide × 3 deep | 9,171 | 0.3100 |
+| per-event net | 128 wide × 3 deep | 134,931 | **0.3279** |
+| graph net | 8 wide × 1 deep | 219 | 0.6775 |
+| graph net | 32 wide × 2 deep | 5,007 | 0.9666 |
+| graph net | 32 wide × 3 deep | 9,171 | **0.9915** |
+| graph net | 128 wide × 3 deep | 134,931 | 0.9894 |
+
+**Capacity does not buy the gap.** The best per-transaction result in the whole sweep is
+the *smallest* GBDT — 1,550 parameters at 0.2891 — and adding capacity makes it steadily
+worse, down to 0.2233 at 1,020,000. The per-event network plateaus around 0.33 and stays
+there through a 15× parameter increase. Meanwhile the graph model reaches **0.9915 with
+9,171 parameters**, and 14× more parameters (0.9894 at 134,931) does not improve it either.
+The selected size is the best size in both directions.
+
+So the gap is an **information gap, not a modelling gap**. What a single authorisation
+contains does not identify a card-testing attempt, because the attacker controls everything
+in it except whether the card authorises — and one decline is unremarkable. The signal is
+the relation between attempts, and a model that never looks across attempts cannot reach it
+however large it is.
+
+This is also the measured answer to "why is there no language model in here". A transformer
+reading one transaction is another per-event model, and the ceiling above is a property of
+the row, not of who is reading it. A model given the *neighbourhood* is no longer a
+per-event model — it is doing the graph's job, in a per-event budget measured at 0.909 ms.
+See [AI decisions](ai-decisions.md).
+
+**Two runs were discarded before this table.** The first used the 40-epoch default rather
+than the 60 epochs `_fit_all` gives every published model; an unfair training budget would
+have flattered the conclusion in exactly the direction the conclusion points. The 256-wide
+row is also omitted above: both families collapse there (0.0596 and 0.0478), which is
+divergence under the shared budget rather than a ceiling, and it is left in
+`results/ceiling.csv` rather than quietly dropped.
+
+### Failure behaviour
+
+Everything above assumes a clean stream. Real authorisation traffic carries nulls,
+malformed rows and fields that go missing at a boundary, so the failure behaviour is
+injected and measured rather than asserted (`python -m koronis.cli resilience`, medians
+over 4 held-out streams, model and threshold frozen throughout).
+
+Three defects were found this way, by probing the live streaming path rather than reading
+it. All three were **silent** — the stream kept running and kept returning answers:
+
+| fault | rate | quarantined | NaN scores | invented device links | campaign recall | peak cache rows |
+|---|---:|---:|---:|---:|---:|---:|
+| `clean` | 0% | 0 | 0 | 0 | 0.952 | 1,859 |
+| `null_device` | 1% | 0 | 0 | **0** | 0.952 | 1,859 |
+| `placeholder_device` | 1% | 0 | 0 | **958** | 0.952 | 1,859 |
+| `null_device` | 10% | 0 | 0 | **0** | 0.936 | 1,859 |
+| `placeholder_device` | 10% | 0 | 0 | **19,792** | 0.948 | 1,859 |
+| `nan_amount` | 5% | 314 | 0 | 0 | 0.884 | 1,773 |
+| `dropped_approved` | 5% | 314 | 0 | 0 | 0.884 | 1,773 |
+| `entity_explosion` | 100% | 0 | 0 | 0 | 0.577 | 1,859 |
+
+**An event that cannot be scored is quarantined, not scored anyway.** A non-finite feature
+used to produce a NaN score, and `NaN >= threshold` is `False` in IEEE arithmetic — so the
+event reported itself as *no alert*. A missing field made the detector quietly stop
+detecting. Now 5% NaN amounts cost 314 events and drop recall from 0.952 to 0.884: a real
+loss, reported as a count with a reason rather than absorbed. Losing an event loudly is
+recoverable; a fraud detector that says "no alert" when it means "I could not read this"
+is not.
+
+**Missing data cannot become evidence.** Entity values were interned with `str(value)`, so
+a null became the key `"None"` and every event without a device fingerprint linked to every
+other one. Null device IDs are ordinary in production — a browser blocking the fingerprint
+— so this manufactures a ring out of absent data.
+
+`placeholder_device` is the control that makes the point, and the reason the two rates are
+swept either side of the link-share cap. It is the *same* missing data, except a
+well-meaning upstream step replaced the null with a constant before the detector saw it.
+At 10% the frequency cap already refuses to link on a value that common, so recall barely
+moves — but **19,792 links were still drawn and still appear in the audit dossier**, telling
+an analyst these attempts share a device when nothing shared anything. At 1% the cap is
+silent, because the share is below its threshold, and `entity_key` is the only thing
+standing between missing data and an invented ring. The null column is 0 at both rates.
+
+**Memory tracks the window, not the traffic.** Nothing was ever evicted from the scoring
+caches: 3,120 events through a 60-second window left 3,120 rows in every layer while 12
+events were actually in scope, and the entity index kept a key for every distinct value
+ever seen — which is precisely what a campaign minting a fresh entity per attempt inflates.
+Both are evicted against the window now: 1,859 peak rows against 6,310 events seen.
+
+**`entity_explosion` is the honest floor.** Give every attempt its own device and recall
+falls to 0.577, because a third of the graph has been destroyed. The purity of the largest
+incident stays 1.000 throughout: the detector loses signal, it does not invent any. That is
+the same limit stated in [Limitations](limitations.md) — an attacker with genuinely fresh
+infrastructure per attempt leaves no graph signal — arrived at from the other direction.
+
 ### Traffic-profile transfer stress test
 
 These are synthetic merchant shapes, not real merchants. Surviving this is evidence the

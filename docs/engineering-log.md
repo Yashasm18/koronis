@@ -203,6 +203,49 @@ Every defect below was surfaced by running experiments, not by reading code.
    pixels on top of it. A count of red pixels alone would not have done — that only moves
    from 440 to 481, which is too small a margin to assert on.
 
+17. **Three ways the stream failed without saying so.** Fault injection against the live
+   `push` path — not a code review — turned up three defects, and all three were silent:
+   the stream kept running and kept returning answers.
+
+   A non-finite feature produced a NaN score. `NaN >= threshold` is `False` in IEEE
+   arithmetic, so the event reported itself as **"no alert"**: a missing `amount` or a null
+   `approved` made the detector quietly stop detecting. A missing entity became an entity —
+   values were interned with `str(value)`, so a null turned into the key `"None"` and every
+   event without a device fingerprint linked to every other one, which is a ring
+   manufactured out of absent data on traffic where null fingerprints are ordinary. And
+   nothing was ever evicted: 3,120 events through a 60-second window left 3,120 rows in
+   every layer cache while 12 events were in scope, and the entity index kept a key for
+   every distinct value ever seen — the structure a campaign minting a fresh entity per
+   attempt inflates fastest.
+
+   The rule adopted is that an event which cannot be scored honestly is **escalated, not
+   scored anyway**: quarantined, counted, and returned with a reason. Losing an event
+   loudly is recoverable; a fraud detector that says "no alert" when it means "I could not
+   read this" is not. Absent entity values are treated one-sidedly, the same argument the
+   sketch uses — refusing to link on an absent value can only fragment an incident, which
+   an analyst can still see, while linking on it invents coordination that was never there.
+   `koronis.cli resilience` now injects each fault and measures the consequence, and
+   `placeholder_device` is the control that makes the point: it is the *same* missing data
+   with a constant substituted upstream, and it draws **958 device links at a 1% rate and
+   19,792 at 10%** where the null draws none. At 10% the link-share cap already refuses to
+   link on a value that common, so recall barely moves — but those links still reach the
+   audit dossier and still tell an analyst that unrelated attempts share a device.
+
+   Two claims had to be withdrawn and re-earned. The README's "memory is bounded by the
+   window rather than by traffic history" was false for the streaming scorer, and
+   SECURITY.md repeated it in a section written one commit earlier. Both now cite the
+   measurement — 1,859 peak rows against 6,310 events — and a test fails if the caches go
+   back to tracking total traffic.
+
+18. **Was the gap a modelling gap or an information gap?** Every headline comparison here
+   is against per-transaction models, so the obvious objection is that the baselines were
+   simply too small. `koronis.cli ceiling` tests it instead of arguing: the per-event
+   feature set is held fixed while capacity is scaled across two families with different
+   inductive biases, on the same 60-epoch budget as every published number. The first run
+   used the 40-epoch default and was discarded before it was written down — an unfair
+   training budget would have flattered the conclusion in exactly the direction the
+   conclusion points.
+
 An inference benchmark reporting p50 1.78 ms was also discarded: it was measured while a
 training job ran on the same machine. The idle run is 0.91 ms.
 

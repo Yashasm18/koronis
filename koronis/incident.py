@@ -20,6 +20,7 @@ from collections import defaultdict, deque
 from .data.schema import RELATIONS
 from .eval.cost import COST_PER_ATTEMPT_INR
 from .sketch import SlidingCountMin
+from .validate import entity_key
 
 # ── action assumptions ──────────────────────────────────────────────────────
 # Every number here is an ASSUMPTION about a merchant workflow, not a
@@ -372,7 +373,9 @@ class StreamingIncidents:
         ts = float(event["ts"])
         self._n_seen += 1
         for rel in RELATIONS:                     # frequency sees ALL traffic
-            self.sketch[rel].add(str(event[rel]), ts)
+            key = entity_key(event.get(rel))
+            if key is not None:
+                self.sketch[rel].add(key, ts)
 
         if score < self.threshold:
             return None
@@ -383,7 +386,14 @@ class StreamingIncidents:
 
         cutoff = ts - self.link_window_s
         for rel in RELATIONS:
-            val = str(event[rel])
+            # An absent value links nothing. Interning it as "None" merged every
+            # alert with a missing device fingerprint into one incident, which
+            # is the same wrong-merge failure the link-share cap exists to stop
+            # - arrived at through missing data rather than through a popular
+            # value. Fragmenting is recoverable; inventing coordination is not.
+            val = entity_key(event.get(rel))
+            if val is None:
+                continue
             bucket = self._recent[rel][val]
             while bucket and bucket[0][0] < cutoff:   # expire, bounding memory
                 bucket.popleft()

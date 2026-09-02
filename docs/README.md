@@ -3,6 +3,7 @@
 | | |
 |---|---|
 | [Architecture](architecture.md) | how it works, and where a learned model is and is not used |
+| [AI decisions](ai-decisions.md) | every model choice, the ones rejected, and the measurement behind each |
 | [Evaluation](evaluation.md) | protocol, ablations, calibration, forecasting, drift, latency |
 | [Limitations](limitations.md) | what is assumed rather than measured, and what production would need |
 | [Engineering log](engineering-log.md) | repository map, and every defect that changed a result |

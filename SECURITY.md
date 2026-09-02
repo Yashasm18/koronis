@@ -84,6 +84,12 @@ Decisions expire with the window. Nothing accumulates a profile of an entity acr
 so there is no long-lived store to protect — a consequence of the design, not a policy
 layered on top.
 
+That bound is **measured, not assumed**, because an earlier version of this section
+asserted it while the streaming scorer was in fact retaining one row per event ever seen.
+The caches and the entity index are both evicted against the window now, and
+[`test_runtime_resilience.py`](tests/test_runtime_resilience.py) fails if they start
+tracking total traffic again.
+
 ### What would have to be true before real traffic
 
 Stated plainly, because the honest answer is "more than has been done":

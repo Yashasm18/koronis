@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 
 from ..data.schema import RELATIONS
+from ..validate import entity_key
 
 
 def build_edges(events: pd.DataFrame, window_s: float,
@@ -23,7 +24,13 @@ def build_edges(events: pd.DataFrame, window_s: float,
 
     for rel in (relations if relations is not None else RELATIONS):
         src_list, dst_list = [], []
-        for idx in events.groupby(rel, sort=False).indices.values():
+        # Absent values must not group. `groupby` already drops NaN, but a null
+        # that reached here as text - "unk" from the IEEE loader's fillna, or a
+        # stringified None - is an ordinary value to pandas, and every event
+        # missing that entity would link to every other one. The streaming path
+        # applies the same rule, and it has to: score parity is measured.
+        keys = events[rel].map(entity_key)
+        for idx in events[keys.notna()].groupby(keys.dropna(), sort=False).indices.values():
             idx = np.sort(idx)
             if len(idx) < 2:
                 continue

@@ -3,7 +3,7 @@
 > Detection of distributed card-testing campaigns that per-entity velocity rules cannot see at any threshold.
 
 [![CI](https://github.com/Yashasm18/koronis/actions/workflows/ci.yml/badge.svg)](https://github.com/Yashasm18/koronis/actions/workflows/ci.yml)
-[![tests](https://img.shields.io/badge/tests-220%20passing-2ea44f)](tests/)
+[![tests](https://img.shields.io/badge/tests-234%20passing-2ea44f)](tests/)
 [![python](https://img.shields.io/badge/python-3.14-3776ab)](https://www.python.org/)
 [![license: MIT](https://img.shields.io/badge/license-MIT-yellow)](LICENSE)
 [![graph libs](https://img.shields.io/badge/graph%20libraries-none-8a3ffc)](koronis/models/layers.py)
@@ -36,12 +36,12 @@ python -m venv .venv
 .venv/bin/pip install -r requirements.txt -r requirements-dev.txt
 .venv/bin/python -m playwright install chromium   # the site tests drive the demo page
 .venv/bin/python site/build.py                    # they need docs/index.html to exist
-.venv/bin/python -m pytest tests/ -q              # 220 tests, ~2 min
+.venv/bin/python -m pytest tests/ -q              # 234 tests, ~2 min
 .venv/bin/python -m koronis.cli ablation          # reproduces the headline table below
 ```
 
 The suite runs without `requirements-dev.txt` — the eight tests that drive the demo page
-skip — but then 212 are collected rather than 220, and the test-count check says so.
+skip — but then 226 are collected rather than 234, and the test-count check says so.
 
 ## Key results
 
@@ -188,9 +188,27 @@ shape as the velocity counters most gateways already run there.
 
 **Sizing, from measured constants.** At 0.91 ms per event and 1,095 events/sec per worker,
 nine workers cover ~9,900 events/sec. Memory is bounded by the window rather than by
-traffic history, and the frequency state is fixed at 4 MB regardless of how many distinct
-entity values pass through — which matters, because a card-testing campaign mints a fresh
-card id per attempt.
+traffic history — measured, because it was not always true: the scorer's caches peak at
+**1,859 rows against 6,310 events seen**, and the frequency state is fixed at 4 MB however
+many distinct entity values pass through. That last part matters, because a card-testing
+campaign mints a fresh card id per attempt.
+
+**When the stream is not clean.** Real authorisation streams carry nulls and malformed
+rows, so the failure behaviour is injected and measured rather than assumed
+([`koronis.cli resilience`](koronis/cli.py)). An event that cannot be scored honestly is
+**quarantined and counted, never scored anyway** — 5% NaN amounts cost 314 events and drop
+recall 0.952 → 0.884, loudly. A missing entity links to **nothing**: the same missing data
+with a placeholder substituted upstream instead manufactures **958 device links at a 1%
+rate and 19,792 at 10%**, to devices that do not exist. Full table:
+[Failure behaviour](docs/evaluation.md#failure-behaviour).
+
+**Is the gap a modelling gap?** No — it is an information gap, and that was tested rather
+than argued. Scaling a per-transaction learner does not close it: the best per-event result
+in a capacity sweep across two model families is the *smallest* GBDT (1,550 parameters,
+PR-AUC 0.2891), and adding capacity makes it worse, down to 0.2233 at 1,020,000. The graph
+model reaches **0.9915 with 9,171 parameters**.
+[The per-event ceiling](docs/evaluation.md#the-per-event-ceiling) ·
+[why there is no language model in here](docs/ai-decisions.md).
 
 **Partitioning is a modelling decision, and it was measured, not assumed.** Splitting a
 graph deletes edges. Routing by BIN preserves the relation that
@@ -235,6 +253,8 @@ is read from there** — nothing is transcribed by hand.
 .venv/bin/python -m koronis.cli select          # architecture selection on calibration, tested once
 .venv/bin/python -m koronis.cli capacity        # width x depth grid, selected on calibration
 .venv/bin/python -m koronis.cli aperture        # merchant view vs gateway view
+.venv/bin/python -m koronis.cli resilience      # fault injection: how it fails, measured
+.venv/bin/python -m koronis.cli ceiling         # can any per-event model close the gap
 .venv/bin/python -m koronis.cli incidents       # alerts -> incidents -> forecast -> action
 .venv/bin/python -m koronis.cli drift           # traffic-profile transfer stress test
 .venv/bin/python -m koronis.cli latency         # precision / recall over time
@@ -260,7 +280,7 @@ python site/build.py                            # results/ -> docs/index.html
 | Is the *whole* pipeline causal? | yes — consolidation too, via a sliding count-min sketch in fixed memory | [Evaluation](docs/evaluation.md#making-consolidation-causal) |
 | Does it survive being split across machines? | measured — and PR-AUC and rupees disagree about which routing is better | [Evaluation](docs/evaluation.md#does-the-graph-survive-being-split-across-machines) |
 | Can the loss be recovered? | yes — replication restores recall 0.65 → 0.99 and is the cheapest routing at every shard count | [Evaluation](docs/evaluation.md#recovering-the-edges-a-partition-deletes) |
-| What broke? | 16 defects, **4 retracted claims** | [Engineering log](docs/engineering-log.md) |
+| What broke? | 18 defects, **4 retracted claims** | [Engineering log](docs/engineering-log.md) |
 
 ## Limitations
 
@@ -289,6 +309,7 @@ This is a **semi-synthetic proof of concept**, not production fraud detection.
 | [Architecture](docs/architecture.md) | how it works, and where a learned model is and is not used |
 | [Evaluation](docs/evaluation.md) | protocol, ablations, calibration, forecasting, drift, latency |
 | [Limitations](docs/limitations.md) | what is assumed rather than measured, and what production would need |
+| [AI decisions](docs/ai-decisions.md) | every model choice, the ones rejected, and the measurement behind each |
 | [Engineering log](docs/engineering-log.md) | repository map, and every defect that changed a result |
 | [Contributing](CONTRIBUTING.md) | development setup and the conventions that keep results reproducible |
 
