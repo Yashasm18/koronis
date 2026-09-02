@@ -1,7 +1,7 @@
 """Experiment entry points.
 
     python -m koronis.cli ablation    # the headline comparison
-    python -m koronis.cli frontier    # predicted vs measured boundary
+    python -m koronis.cli frontier    # the per-entity blind region, k >= n/tau
     python -m koronis.cli latency     # precision/recall/INR over time
     python -m koronis.cli seeds       # repeat across seeds, report intervals
     python -m koronis.cli replay      # causal event-by-event replay -> JSON

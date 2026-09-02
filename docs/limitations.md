@@ -32,6 +32,16 @@ This is a **semi-synthetic proof of concept**, not production fraud detection.
   compressing its timeline to match the density would discard the real inter-arrival
   structure that is the only reason to prefer it. `DeviceInfo` also lives in
   `train_identity.csv` (≈24% row coverage), not `train_transaction.csv`.
+- **The threat model covers attempts that reach authorisation.** Every simulated event
+  carries an approve/decline outcome, and that outcome is one of Koronis's two mechanisms.
+  Payment flows in which a step-up challenge precedes authorisation are therefore **out of
+  scope**: an attempt that fails authentication never produces the outcome this detector
+  reads, so a campaign confined to such a flow is invisible to it — not detected poorly,
+  not detected at all. Which flows require a challenge before authorisation varies by
+  market, issuer and acquirer, and this prototype models none of that. `step_up` appears
+  here only as a *recommended response* to an incident, never as a stage the simulated
+  traffic passes through.
+
 - **Campaigns are injected, not observed.** Ground truth exists because it was
   constructed. The hold-out extrapolates to an unseen spread, but this is not the same as
   detecting a campaign in the wild.

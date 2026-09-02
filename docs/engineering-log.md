@@ -327,6 +327,17 @@ Every defect below was surfaced by running experiments, not by reading code.
    smaller than the dashed line — which means the frontier as drawn is generous to this
    project, not to the baseline.
 
+   **The first attempt at this retraction did not take.** The corrected paragraph went in
+   while the sentence it retracted survived two lines below it — "the dashed line is
+   arithmetic, drawn before any run; every measured cell falls on the side it predicts" —
+   along with the section heading, the caption on the live demo site, an entry in
+   `architecture.md`, the thesis sentence in the opening, and two command comments. Seven
+   places, of which a reviewer spotted three. A reader would have seen the correction and
+   then the un-retracted claim beneath it, and concluded the correction was cosmetic. A
+   retraction that leaves the original standing is worse than none, because it looks like
+   one has been made. The check now is a grep for the retracted phrasing across every
+   surface, including the generated site.
+
    Two documents also had the cost model charging this merchant for chargebacks on cards the
    attack validated. Those land on whichever merchant the card is later spent at, usually
    somebody else. The constant is unchanged and still a declared assumption; the reasoning

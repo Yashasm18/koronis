@@ -97,7 +97,7 @@ opacity and a training dependency for nothing.
 
 | Step | What it uses | Why not a model |
 |---|---|---|
-| Detectability boundary | arithmetic, `k ≥ n/τ` | Derived on paper before any run, then tested. A fitted curve would have described the same fact with less certainty and no explanation. |
+| Detectability boundary | arithmetic, `k ≥ n/τ` | Derived on paper, then implemented and checked. Under the generator's uniform spread the grid agreeing with it is exact by construction, so this is an implementation check rather than a tested prediction. A fitted curve would have described the same fact with less certainty and no explanation. |
 | Incident consolidation | union-find over shared entities | "Same incident" *is* connectivity, not similarity. Clustering would impose a distance metric and a `k` on a question that already has an exact answer. |
 | Velocity baseline tuning | deterministic threshold search under a stated FP budget | The baseline should be as strong as it can honestly be made, not as weak as a default makes it. |
 | Drift detection | Population Stability Index | A standard payments-risk statistic a reviewer can read and re-derive. A learned detector would raise the same flags while making "why" unanswerable. |

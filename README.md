@@ -42,8 +42,11 @@ An attacker spreading `n` attempts across `k ≥ n/τ` entities keeps every **pe
 counter under threshold at *any* threshold. Koronis is a **defence-only detector and
 decision-support prototype** built for exactly that region.
 
-Its contribution is not that it beats its baselines. It is a **characterisation of when
-detection is possible at all** — stated as arithmetic, then tested.
+Its contribution is not that it beats its baselines. It is a **characterisation of where a
+per-entity counter cannot work**, stated as arithmetic and implemented faithfully. The
+matching characterisation of where *this* model stops working is
+[attempted and published as unmeasurable on this simulator](docs/evaluation.md#where-does-this-model-stop-working--an-invalid-measurement-published) —
+the honest half of the same question.
 
 ```bash
 python -m venv .venv
@@ -94,7 +97,7 @@ attempt-pairs sharing an entity grows as `n²/k` — so the graph's advantage *i
 attack size, and the attacker's only escape is `k → n`: one fresh device, IP and BIN per
 attempt, bounded by infrastructure cost.
 
-**Predicted vs. measured detectability boundary**, `predicted_boundary_k(n, τ) = n/τ`, on
+**The per-entity blind region**, `predicted_boundary_k(n, τ) = n/τ`, on
 a 4×4 grid (`python -m koronis.cli frontier`):
 
 | n | k=2 | k=10 | k=50 | k=200 | predicted boundary `n/τ` |
@@ -120,9 +123,9 @@ of the grid purely because BINs were sampled rather than spread evenly
 
 ![Detectability frontier: 16 measured cells against the boundary k = n/τ](docs/assets/frontier.svg)
 
-The dashed line is arithmetic, drawn before any run. Every measured cell falls on the side
-it predicts, and Koronis detects across the whole grid — including the entire region above
-the line, where no per-entity counter can trip at any threshold.
+Koronis detects across the whole grid, including the entire region above the line, where
+no per-entity counter can trip at any threshold. The line itself is arithmetic — see above
+for why the grid agreeing with it is an implementation check rather than a result.
 
 **Held-out detection**, median with the 2.5th / 97.5th percentiles observed across 10
 independent trials (`python -m koronis.cli seeds`):
@@ -286,7 +289,7 @@ is read from there** — nothing is transcribed by hand.
 ```bash
 .venv/bin/python -m koronis.cli ablation        # headline detector comparison
 .venv/bin/python -m koronis.cli seeds           # 10 trials, median + across-run range
-.venv/bin/python -m koronis.cli frontier        # predicted vs measured boundary
+.venv/bin/python -m koronis.cli frontier        # the per-entity blind region, k >= n/tau
 .venv/bin/python -m koronis.cli saturation      # spread pushed to k = n; why it is not measurable here
 .venv/bin/python -m koronis.cli mechanism       # which mechanism carries the signal
 .venv/bin/python -m koronis.cli relations       # which entity type carries the signal
@@ -337,6 +340,10 @@ This is a **semi-synthetic proof of concept**, not production fraud detection.
 - **It will not catch** an attacker using genuinely fresh infrastructure for every attempt.
   That limit is real, and it is also the point: driving `k → n` costs one device, IP and BIN
   per attempt.
+- **Only attempts that reach authorisation are in scope.** The outcome is one of the two
+  mechanisms, so a flow where a step-up challenge precedes authorisation produces no outcome
+  to read, and a campaign confined to one is invisible — not detected poorly, not at all.
+  Which flows those are varies by market and acquirer; this prototype models none of that.
 - **Cost figures are declared assumptions**, not measurements.
 - **The drift guardrail is experimental** — its false-flag rate on held-out base traffic is
   too high to depend on, and the reason is measured.

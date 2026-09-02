@@ -828,11 +828,13 @@ table(el("t-front"), [
   {h:"measured", f:function(r){return r.velocity_detected==="True"?"fires":"blind";}},
   {h:"koronis", f:function(r){return r.koronis_detected==="True"?"detects":"—";}},
 ], D.frontier);
-el("front-hint").textContent = "prediction matches observation on "+agree+" / "+D.frontier.length+" cells";
+el("front-hint").textContent = agree+" / "+D.frontier.length+" cells match the arithmetic";
 var FRONT_CAP = "Each circle is one measured cell. The dashed line is k = n/\u03C4, "
-  + "computed from the binding velocity threshold before any run. Cells above it are "
-  + "unreachable by any per-entity counter; Koronis detects in all "+D.frontier.length
-  + ". Hover a cell for its numbers.";
+  + "computed from the binding velocity threshold. Cells above it are unreachable by any "
+  + "per-entity counter; Koronis detects in all "+D.frontier.length+". The campaign "
+  + "generator spreads attempts uniformly, so every entity carries exactly n/k and the "
+  + "agreement above is exact by construction - an implementation check, not a prediction "
+  + "that survived a test. Hover a cell for its numbers.";
 el("front-cap").textContent = FRONT_CAP;
 drawFront();
 
