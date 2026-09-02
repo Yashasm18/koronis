@@ -5,3 +5,7 @@ data/raw/
 .DS_Store
 site/_data.json
 scratchpad/
+
+# Internal planning and spec drafts - working notes, not documentation.
+# They describe an intended build rather than the one that shipped.
+docs/superpowers/
