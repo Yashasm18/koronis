@@ -3,9 +3,8 @@
 Drives the built docs/index.html in Chromium, films the replay and a tour of the
 evaluation and method tabs, then writes the three assets the README links:
 
-    docs/assets/koronis-demo.gif          the inline hero image
-    docs/assets/koronis-demo.mp4          the full-resolution recording
-    docs/assets/koronis-demo-poster.png   a still
+    docs/assets/koronis-demo.gif   the inline hero image
+    docs/assets/koronis-demo.mp4   the full-resolution recording
 
 Finally it refreshes docs/assets/koronis-demo.stamp, which
 tests/test_demo_recording_is_current.py checks so a re-run of the experiments
@@ -138,10 +137,6 @@ def encode(src: pathlib.Path, tmp: pathlib.Path) -> None:
         "[x][1:v]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle",
         ASSETS / "koronis-demo.gif")
 
-    run("-ss", "6", "-i", src, "-frames:v", "1",
-        "-vf", f"scale={MP4_W}:{MP4_H}:flags=lanczos",
-        ASSETS / "koronis-demo-poster.png")
-
 
 def main() -> int:
     if not INDEX.exists():
@@ -160,7 +155,7 @@ def main() -> int:
     from tests.test_demo_recording_is_current import write_stamp
     write_stamp()
 
-    for name in ("koronis-demo.gif", "koronis-demo.mp4", "koronis-demo-poster.png"):
+    for name in ("koronis-demo.gif", "koronis-demo.mp4"):
         p = ASSETS / name
         print(f"wrote {p}  ({p.stat().st_size / 1e6:.1f} MB)")
     return 0

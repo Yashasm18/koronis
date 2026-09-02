@@ -85,8 +85,8 @@ def test_the_recording_shows_the_results_the_repo_reports():
         )
 
 
-def test_the_recording_and_its_poster_are_committed():
-    for name in ("koronis-demo.gif", "koronis-demo.mp4", "koronis-demo-poster.png"):
+def test_the_recording_is_committed():
+    for name in ("koronis-demo.gif", "koronis-demo.mp4"):
         p = ROOT / "docs" / "assets" / name
         assert p.exists() and p.stat().st_size > 10_000, f"{name} is missing or truncated"
 
