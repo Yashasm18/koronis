@@ -389,6 +389,24 @@ Every defect below was surfaced by running experiments, not by reading code.
    entirely; the correction lives here. The feature itself is real, tested by
    `test_evidence_names_the_linked_attempts`, and was added because the review asked for it.
 
+25. **Reset cleared the stream but not the verdict.** Running the replay to completion and
+   pressing Reset returned the counters, the chart and the evidence graph to their starting
+   state, while the incident panel went on describing the finished run: "Campaign confirmed",
+   the linked attempt ids, 17 linked attempts across 6 device / 5 IP / 6 BIN, the forecast,
+   and a rupee ladder ending *"Lowest expected cost wins: Hold + analyst review"* — a
+   recommended action for a stream that no longer had a single event in it.
+
+   `updateCard()` owns ten elements and began `if(!e){return;}`, so with nothing to describe
+   it left all ten holding the previous run's content. `doReset()` cleared four of them by
+   hand, three hundred lines away, and the other **eight** were forgotten. Two pieces of code
+   knowing a list, one of them incompletely.
+
+   `updateCard(null)` now clears every element it owns and `doReset` clears none of them, so
+   the list exists once. The test asserts the whole invariant rather than the eight fields:
+   after Reset the panel equals its first-load state. It also asserts the panel *changed*
+   during the replay first, because a test comparing two identical empty states would pass
+   against any implementation. Reverted, it names all eight.
+
 An inference benchmark reporting p50 1.78 ms was also discarded: it was measured while a
 training job ran on the same machine. The idle run is 0.91 ms.
 

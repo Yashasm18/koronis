@@ -213,3 +213,46 @@ def test_the_frozen_threshold_label_is_legible(page):
         f"label, which is what makes it unreadable: {g}")
 
     pg.click("#reset")
+
+
+# Reset restored the counters, the chart and the graph, but the incident panel
+# is written by updateCard(), which returned early when there was no event to
+# describe. Eight of the ten elements it owns therefore kept the finished run's
+# content: after a reset the panel still showed a confirmed campaign, the linked
+# attempt ids, the forecast, and a rupee ladder ending "Lowest expected cost
+# wins: Hold + analyst review" - for a stream that had been cleared.
+_PANEL = ["card-t", "card-score", "card-links", "card-ev", "incbar", "fcast",
+          "ladder-rows", "assum", "card-title", "card-why"]
+
+_SNAPSHOT = """() => Object.fromEntries(%s.map(id => {
+    const el = document.getElementById(id);
+    return [id, el ? el.innerText.replace(/\\s+/g, ' ').trim() : null];
+}))""" % _PANEL
+
+
+def test_reset_returns_the_incident_panel_to_its_first_load_state(page):
+    pg, _ = page
+    pg.click("#reset")
+    pg.wait_for_timeout(200)
+    fresh = pg.evaluate(_SNAPSHOT)
+
+    pg.click('.speed button[data-speed="16"]')
+    pg.click("#play")
+    pg.wait_for_function(
+        "() => document.getElementById('play').textContent === 'Replay incident'",
+        timeout=60_000)
+    pg.wait_for_timeout(300)
+
+    ran = pg.evaluate(_SNAPSHOT)
+    assert ran != fresh, (
+        "the incident panel did not change during the replay, so this test "
+        "cannot detect whether reset clears it")
+
+    pg.click("#reset")
+    pg.wait_for_timeout(300)
+    after = pg.evaluate(_SNAPSHOT)
+
+    stale = {k: after[k][:60] for k in _PANEL if after[k] != fresh[k]}
+    assert not stale, (
+        "these parts of the incident panel survived Reset and still describe "
+        f"the finished run: {stale}")

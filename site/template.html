@@ -888,8 +888,28 @@ function feedRow(e){
     '<span class="tag '+(e.approved?"app":"dec")+'">'+(e.approved?"appr":"declined")+'</span></div>';
 }
 
+/* Elements this function owns. With no event to describe it must CLEAR them,
+   not return: every one of these otherwise keeps the previous run's content.
+   doReset() used to clear four of the ten by hand, so after a reset the
+   incident panel still showed a confirmed campaign, the linked attempt ids,
+   the forecast and the full rupee ladder ending "Lowest expected cost wins:
+   Hold + analyst review". Keeping the list here means a new element added
+   below cannot be forgotten by a reset that lives 300 lines away. */
+var CARD_ELEMENTS = ["card-t", "card-score", "card-links", "card-ev", "incbar",
+                     "fcast", "ladder-rows", "assum"];
+var CARD_IDLE_WHY = "Press <b>Replay incident</b> to stream the held-out " +
+                    "campaign one event at a time.";
+
+function clearCard(){
+  CARD_ELEMENTS.forEach(function(id){ el(id).innerHTML = ""; });
+  el("card-title").textContent = "Awaiting traffic";
+  el("card-why").innerHTML = CARD_IDLE_WHY;
+  var dw = el("dossier-wrap");
+  dw.hidden = true; dw.open = false; el("dossier").textContent = "";
+}
+
 function updateCard(e){
-  if(!e){return;}
+  if(!e){clearCard(); return;}
   el("card-t").textContent = "t = " + e.t.toFixed(1) + " s";
   el("card-score").textContent = "score " + e.score.toFixed(3) + " / thr " + THR.toFixed(3);
   var ev = e.ev;
@@ -1187,15 +1207,11 @@ el("copy-dossier").addEventListener("click", function(){
 function doReset(){
   playing=false; cancelAnimationFrame(raf); lastFrame=0;
   i=0; t=T_START; seen=[]; alerts=0; lastAlert=null;
-  el("play").textContent = "Replay incident"; setStage(0); render();
-  el("m-score").textContent = "—";
-  el("card-why").innerHTML = "Press <b>Replay incident</b> to stream the held-out campaign one event at a time.";
-  el("card-title").textContent = "Awaiting traffic";
-  el("incbar").innerHTML = "<span>no incident open</span>";
-  // updateCard() returns early with no event to describe, so the dossier from
-  // the previous run would otherwise survive the reset.
-  var dw = el("dossier-wrap");
-  dw.hidden = true; dw.open = false; el("dossier").textContent = "";
+  el("play").textContent = "Replay incident"; setStage(0);
+  // render() -> updateCard(null) -> clearCard() restores every element the
+  // incident panel owns. Clearing any of them here as well is how they drifted
+  // apart the first time.
+  render();
 }
 addEventListener("resize", function(){drawChart(); drawGraph(); drawFront();});
 
