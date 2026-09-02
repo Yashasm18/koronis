@@ -134,6 +134,23 @@ def saturation_rows():
             _i(r, "entity_values_shared_with_background")))
 
 
+def bin_concentration_rows():
+    for r in _rows("bin_concentration.csv"):
+        label = r["profile"] if r["profile"] == "base" else f"`{r['profile']}`"
+        yield ("| {} | {} | {} | {} | {} | {} | {} |".format(
+            label, _count(r, "false_alerts"), f'{float(r["false_alert_rate"]):.5f}',
+            _count(r, "largest_false_incident"), _count(r, "distinct_bins"),
+            _f(r, "top_bin_share", 4), _count(r, "bins_over_link_cap")))
+
+
+def bin_detection_rows():
+    for r in _rows("bin_concentration_detection.csv"):
+        label = r["profile"] if r["profile"] == "base" else f"`{r['profile']}`"
+        yield ("| {} | {} | {} | {} |".format(
+            label, _f(r, "pr_auc", 4), _f(r, "recall", 4),
+            _count(r, "false_positives")))
+
+
 def policy_rows():
     labels = {"always_allow": "always allow", "always_hold": "always hold",
               "event_thresholding": "event-by-event thresholding",
@@ -157,6 +174,8 @@ TABLES = {
     "failure behaviour": resilience_rows,
     "per-event ceiling": ceiling_rows,
     "saturation": saturation_rows,
+    "BIN concentration, false alarms": bin_concentration_rows,
+    "BIN concentration, detection": bin_detection_rows,
 }
 
 

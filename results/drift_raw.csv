@@ -11,3 +11,6 @@ marketplace,2,0.8466,0.1621,True,reuse_ip,23,2,1,1,1,12.0
 flash_sale,0,0.4342,0.1621,True,log_interarrival,38,9,1,1,8,84.0
 flash_sale,1,0.2944,0.1621,True,log_interarrival,19,3,2,2,1,24.0
 flash_sale,2,0.4004,0.1621,True,log_interarrival,17,4,3,3,1,36.0
+bin_dense,0,0.6309,0.1621,True,reuse_bin,20,8,0,0,8,72.0
+bin_dense,1,0.6356,0.1621,True,reuse_bin,2,1,0,0,1,0.0
+bin_dense,2,0.619,0.1621,True,reuse_bin,1,1,0,0,1,0.0

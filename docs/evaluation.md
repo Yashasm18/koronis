@@ -612,6 +612,49 @@ in this repository, days from a deadline, to measure one boundary. The honest po
 that the boundary is stated arithmetically, is not measured, and that the experiment which
 looked like it measured it did not.
 
+### A legitimate BIN giant component
+
+The sharpest criticism available against this design: BIN carries most of the signal, and a
+domestic sale event on a handful of issuers produces a dense legitimate BIN component that
+looks structurally like a ring. `bin_dense` gives BIN a **tenth** of base's pool and a
+steeper tail, holding device, IP, span and decline rate at base so concentration is the only
+variable. Two questions, measured separately.
+
+**Does legitimate concentration alone raise false alarms?** No — it lowers them.
+`python -m koronis.cli bin_concentration` scores **campaign-free** streams with the frozen
+threshold, so every alert is false:
+
+| profile | false alerts | false-alert rate | largest false incident | distinct BINs | top BIN's share | BINs over the 2% link cap |
+|---|---:|---:|---:|---:|---:|---:|
+| base | 6 | 0.00100 | 1 | 120 | 0.1465 | 8.5 |
+| `bin_dense` | 1 | 0.00017 | 1 | 12 | 0.4191 | 10.5 |
+
+**Does detection survive it?** Yes, unchanged. With a campaign injected into the same
+profile, recall is identical and precision improves:
+
+| profile | PR-AUC | recall | false positives |
+|---|---:|---:|---:|
+| base | 0.9985 | 0.9862 | 6.5 |
+| `bin_dense` | 0.9998 | 0.9862 | 0.5 |
+
+Fractional counts are medians across an even number of streams.
+
+**Why**, and it is not "the graph handles it". When twelve BIN values cover the whole
+stream, BIN co-occurrence stops discriminating *in both directions* — it neither flags
+legitimate traffic nor helps find the campaign. What still separates them is the pair the
+mechanism ablation already named: the campaign's spread across device and IP, and the
+**authorisation outcome**. Sale traffic approves; card testing declines ~96%. The link-share
+cap is the second, independent layer: with 10.5 BIN values above the 2% cap, those values
+are refused as consolidation evidence outright.
+
+**What this does not test.** Device and IP are held at base while the campaign spreads
+across 60 of each, so it stays visible on relations the profile did not touch. A campaign
+that hid *inside* the dense BINs **and** mimicked the merchant's device and IP distribution
+is a harder case, and it is not measured here. The drift guard does flag this profile
+(PSI 0.631) and names `reuse_bin` as the feature that moved, which is the right answer — but
+that guard is [experimental](#traffic-profile-transfer-stress-test) and not something to
+lean on.
+
 ### The per-event ceiling
 
 Every headline comparison here is against per-transaction models, so the obvious objection
@@ -726,7 +769,7 @@ infrastructure per attempt leaves no graph signal — arrived at from the other 
 These are synthetic merchant shapes, not real merchants. Surviving this is evidence the
 detector is not tuned to one traffic profile; it is not evidence of production
 cross-merchant transfer. Everything is fitted on the **base** profile and frozen before
-any shifted traffic is scored. The three shifted profiles are declared in
+any shifted traffic is scored. The shifted profiles are declared in
 [`koronis/profiles.py`](../koronis/profiles.py) before being run:
 
 | profile | what it breaks |
@@ -734,6 +777,14 @@ any shifted traffic is scored. The three shifted profiles are declared in
 | `subscription` | legitimate device and card reuse is high — dense co-occurrence is normal |
 | `marketplace` | entities are diffuse — the graph is sparse and thresholds sit wrong |
 | `flash_sale` | a legitimate burst — high volume and elevated declines, no attack |
+| `bin_dense` | a legitimate BIN giant component — a few issuers carry the traffic |
+
+**`bin_dense` was added after the first three had been run**, and that is declared rather
+than hidden, because adding a profile after seeing the others is the exact move this test's
+own discipline warns against. The reason it was added: the per-relation ablation says BIN
+carries most of the signal, and none of the original three shifted BIN above base —
+`subscription` and `flash_sale` hold it at base and `marketplace` makes it *more* diffuse.
+The relation the detector leans on hardest had no adversarial legitimate profile at all.
 
 Drift is measured by Population Stability Index, with the cut-off set to the 95th
 percentile of PSI between disjoint base samples:
@@ -744,6 +795,7 @@ percentile of PSI between disjoint base samples:
 | `subscription` | 0.584 | 3 / 3 | reuse_device | ✓ device reuse |
 | `marketplace` | 0.924 | 3 / 3 | reuse_ip | ✓ entity diffusion |
 | `flash_sale` | 0.400 | 3 / 3 | log_interarrival | ✓ the burst |
+| `bin_dense` | 0.631 | 3 / 3 | reuse_bin | ✓ BIN concentration |
 
 Cut-off 0.162. When PSI exceeds it, the policy stands down from automated intervention to
 analyst review. That is a trade, not a free win:

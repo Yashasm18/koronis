@@ -54,6 +54,13 @@ This is a **semi-synthetic proof of concept**, not production fraud detection.
   so holding a real false-positive budget would push `τ_bin` higher still — a counter that
   trips less easily than the one measured here. The baseline is therefore given better
   conditions than reality, which is the conservative direction for this comparison.
+- **A campaign hiding inside a dense BIN component is not tested.** A merchant whose
+  traffic concentrates on a few issuers is
+  [measured and survivable](evaluation.md#a-legitimate-bin-giant-component) — false alarms
+  fall and detection is unchanged — but only because the campaign there still spreads across
+  60 devices and 60 IPs, relations the profile leaves at base. An attacker who concentrated
+  on the same dense BINs *and* mimicked the merchant's device and IP distribution is a
+  harder case, and it is not measured.
 - **The drift guardrail is experimental** — [as measured](evaluation.md#traffic-profile-transfer-stress-test),
   not a safety control.
 

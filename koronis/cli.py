@@ -43,7 +43,8 @@ from .drift import DriftMonitor
 from .forecast import ExposureForecaster, build_snapshots, evaluate_forecast
 from .profiles import BASE, SHIFTED
 from .incident import (
-    ACTION_BY_NAME, IncidentRisk, StreamingIncidents, build_incidents, dossier,
+    ACTION_BY_NAME, MAX_LINK_SHARE, IncidentRisk, StreamingIncidents,
+    build_incidents, dossier,
 )
 from .eval.policy import evaluate_policies, incident_reliability
 from .stream import StreamingKoronis
@@ -1278,6 +1279,100 @@ def relations(n_seeds: int = 5) -> pd.DataFrame:
     return med
 
 
+
+def bin_concentration(n_streams: int = 6) -> pd.DataFrame:
+    """Does legitimate BIN concentration alone produce false alarms?
+
+    The per-relation ablation says BIN carries most of the signal, and until
+    `bin_dense` was added no shifted profile concentrated it: two held it at base
+    and one made it more diffuse. So the relation the detector leans on hardest
+    had no adversarial legitimate profile. A domestic sale event on a handful of
+    issuers is exactly that case, and it is the strongest criticism available
+    against this design.
+
+    The drift sweep cannot answer it, because every stream it builds contains an
+    injected campaign. This one contains **none**: pure legitimate traffic,
+    scored with the frozen threshold, so every alert is a false one. Both layers
+    are measured, because they defend separately - the detector's own score, and
+    the link-share cap that refuses to consolidate on a value covering more than
+    2% of the stream.
+
+    The prediction under test, stated before running: a dense legitimate BIN
+    component and a card-testing ring differ on the authorisation outcome, which
+    is a model feature, so concentration alone should not be enough. If that is
+    wrong the number says so.
+    """
+    from .profiles import BY_NAME
+
+    train = _train_set(0)
+    _, _, kor = _fit_all(train)
+    calib = _calibration_set(2)
+    thr, _ = cost_optimal_threshold(_raw(kor.score_events(calib)),
+                                    calib["label"].to_numpy(),
+                                    COST_PER_ATTEMPT_INR, COST_PER_FALSE_BLOCK_INR)
+
+    rows = []
+    for name in ("base", "bin_dense"):
+        prof = BY_NAME[name]
+        for j in range(n_streams):
+            # No campaign injected: every alert below is a false positive.
+            ev = load_background(path=None, n_rows=N_BACKGROUND,
+                                 seed=4200 + j * 31, profile=prof)
+            sc = _raw(kor.score_events(ev))
+            alerts = int((sc >= thr).sum())
+
+            share = ev["bin_id"].value_counts(normalize=True)
+            inc = build_incidents(ev, sc, thr)
+            rows.append({
+                "profile": name,
+                "stream": j,
+                "events": len(ev),
+                "false_alerts": alerts,
+                "false_alert_rate": round(alerts / len(ev), 5),
+                "false_incidents": len(inc),
+                "largest_false_incident": max((len(i.rows) for i in inc), default=0),
+                "distinct_bins": int(ev["bin_id"].nunique()),
+                "top_bin_share": round(float(share.iloc[0]), 4),
+                "bins_over_link_cap": int((share > MAX_LINK_SHARE).sum()),
+            })
+
+    # Second half: the same profiles WITH a campaign, so the cost of BIN
+    # washing out as a discriminator is measured rather than argued. An earlier
+    # version of this took these numbers from a one-off script; feature_parity
+    # already showed how a one-off can flip sign against the test protocol.
+    det = []
+    for name in ("base", "bin_dense"):
+        for j in range(4):
+            ev = _profile_stream(1200 + j * 13, BY_NAME[name], TEST_K, TEST_CAMO, 400)
+            y = ev["label"].to_numpy()
+            sc = _raw(kor.score_events(ev))
+            det.append({
+                "profile": name, "stream": j,
+                "pr_auc": average_precision_score(y, sc),
+                "recall": ((sc >= thr) & (y == 1)).sum() / max((y == 1).sum(), 1),
+                "false_positives": int(((sc >= thr) & (y == 0)).sum()),
+            })
+    det_med = (pd.DataFrame(det).drop(columns=["stream"])
+               .groupby("profile").median().round(4).reset_index())
+
+    df = pd.DataFrame(rows)
+    med = df.drop(columns=["stream"]).groupby("profile").median().round(5).reset_index()
+    RESULTS.mkdir(exist_ok=True)
+    df.to_csv(RESULTS / "bin_concentration_raw.csv", index=False)
+    med.to_csv(RESULTS / "bin_concentration.csv", index=False)
+    det_med.to_csv(RESULTS / "bin_concentration_detection.csv", index=False)
+
+    print(f"\nlegitimate traffic only, no campaign injected, {n_streams} streams "
+          "per profile, medians\n")
+    print(med.to_string(index=False))
+    print("\nwith a campaign injected into the same profiles\n")
+    print(det_med.to_string(index=False))
+    print("\nEvery alert in the first table is a false one. `bins_over_link_cap` is how many "
+          "BIN\nvalues exceed the 2% link-share cap - those are refused as consolidation "
+          "evidence,\nwhich is the second layer of defence and is separate from the score.")
+    return df
+
+
 def drift() -> pd.DataFrame:
     """Traffic-profile transfer stress test with an automation guardrail.
 
@@ -1737,5 +1832,6 @@ if __name__ == "__main__":
      "architecture": architecture, "online": online,
      "resilience": resilience, "ceiling": ceiling,
      "feature_parity": feature_parity, "saturation": saturation,
+     "bin_concentration": bin_concentration,
      "sharding": sharding, "select": select,
      "replicate": replicate, "capacity": capacity}[cmd]()

@@ -22,6 +22,21 @@ Each profile breaks a different assumption the base profile satisfies:
                 the decline rate rises under load — structurally similar to a
                 campaign, without being one. This is the profile most likely to
                 produce a false escalation, which is why it is included.
+
+  bin_dense     a legitimate BIN giant component: a few card ranges carry most
+                of the traffic, as in a domestic sale event on a handful of
+                issuers. Everything else is held at base, so BIN concentration
+                is the only variable.
+
+**`bin_dense` was added after the first three had been run**, in response to a
+specific criticism: the per-relation ablation says BIN carries most of the
+signal, and none of the original three shifted BIN above base — `subscription`
+and `flash_sale` hold it at base, and `marketplace` makes it *more* diffuse. So
+the relation the detector leans on hardest had no adversarial profile at all.
+
+Adding a profile after seeing the others is exactly the move this file's own
+discipline warns about, so it is declared rather than hidden: it was defined
+before it was run, and its result is published whatever it says.
 """
 from dataclasses import dataclass
 
@@ -71,6 +86,16 @@ SHIFTED = [
         span_s=1 * 3600.0,
         decline_rate=0.22,
         blurb="legitimate burst; high volume and elevated declines, no attack",
+    ),
+    Profile(
+        name="bin_dense",
+        # A tenth of base's BIN pool and a steeper tail: a handful of card
+        # ranges carry most of the traffic. Device, IP, span and decline rate
+        # are held at base so that BIN concentration is the only thing shifted.
+        entity_shape={"device": (0.80, 0.45), "ip": (0.25, 0.70), "bin": (0.002, 1.3)},
+        span_s=4 * 3600.0,
+        decline_rate=0.08,
+        blurb="legitimate BIN giant component; a few issuers carry the traffic",
     ),
 ]
 

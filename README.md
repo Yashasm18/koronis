@@ -3,7 +3,7 @@
 > Detection of distributed card-testing campaigns that per-entity velocity rules cannot see at any threshold.
 
 [![CI](https://github.com/Yashasm18/koronis/actions/workflows/ci.yml/badge.svg)](https://github.com/Yashasm18/koronis/actions/workflows/ci.yml)
-[![tests](https://img.shields.io/badge/tests-248%20passing-2ea44f)](tests/)
+[![tests](https://img.shields.io/badge/tests-251%20passing-2ea44f)](tests/)
 [![python](https://img.shields.io/badge/python-3.14-3776ab)](https://www.python.org/)
 [![license: MIT](https://img.shields.io/badge/license-MIT-yellow)](LICENSE)
 [![graph libs](https://img.shields.io/badge/graph%20libraries-none-8a3ffc)](koronis/models/layers.py)
@@ -53,12 +53,12 @@ python -m venv .venv
 .venv/bin/pip install -r requirements.txt -r requirements-dev.txt
 .venv/bin/python -m playwright install chromium   # the site tests drive the demo page
 .venv/bin/python site/build.py                    # they need docs/index.html to exist
-.venv/bin/python -m pytest tests/ -q              # 248 tests, ~2 min
+.venv/bin/python -m pytest tests/ -q              # 251 tests, ~2 min
 .venv/bin/python -m koronis.cli ablation          # reproduces the headline table below
 ```
 
 The suite runs without `requirements-dev.txt` — the eight tests that drive the demo page
-skip — but then 240 are collected rather than 248, and the test-count check says so.
+skip — but then 243 are collected rather than 251, and the test-count check says so.
 
 ## Key results
 
@@ -305,6 +305,7 @@ is read from there** — nothing is transcribed by hand.
 .venv/bin/python -m koronis.cli feature_parity  # the one disclosed baseline asymmetry
 .venv/bin/python -m koronis.cli incidents       # alerts -> incidents -> forecast -> action
 .venv/bin/python -m koronis.cli drift           # traffic-profile transfer stress test
+.venv/bin/python -m koronis.cli bin_concentration  # a legitimate BIN giant component
 .venv/bin/python -m koronis.cli latency         # precision / recall over time
 .venv/bin/python -m koronis.cli replay          # causal event-by-event replay -> JSON
 .venv/bin/python -m koronis.cli benchmark       # p50 / p95 per-event inference latency
@@ -323,7 +324,7 @@ python site/build.py                            # results/ -> docs/index.html
 | Do the architectural claims hold? | one did not — the heterophily gate was **net-negative at two layers, noise at three**, and selection removed it | [Evaluation](docs/evaluation.md#does-the-architecture-earn-its-place) |
 | Was the model sized, or just chosen? | sized — 32×3 selected on calibration from a 9-point grid, and it held up on test | [Evaluation](docs/evaluation.md#closing-the-loop-selecting-an-architecture-without-touching-test) |
 | Is a gateway's wider view worth anything? | measured: the gap grows with the number of merchants | [Evaluation](docs/evaluation.md#vantage-point-one-merchant-or-the-whole-gateway) |
-| Does it survive a different merchant? | flagged on all three shifted profiles; the guardrail is **experimental** | [Evaluation](docs/evaluation.md#traffic-profile-transfer-stress-test) |
+| Does it survive a different merchant? | flagged on all four shifted profiles, including a legitimate BIN giant component; the guardrail is **experimental** | [Evaluation](docs/evaluation.md#traffic-profile-transfer-stress-test) |
 | Can it run online? | 0.91 ms p50; streaming reproduces batch scores exactly | [Evaluation](docs/evaluation.md#streaming-and-inference-latency) |
 | Is the *whole* pipeline causal? | yes — consolidation too, via a sliding count-min sketch in fixed memory | [Evaluation](docs/evaluation.md#making-consolidation-causal) |
 | Does it survive being split across machines? | measured — and PR-AUC and rupees disagree about which routing is better | [Evaluation](docs/evaluation.md#does-the-graph-survive-being-split-across-machines) |
