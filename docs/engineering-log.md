@@ -362,6 +362,33 @@ Every defect below was surfaced by running experiments, not by reading code.
    synthesised from its fraud flag — the mechanism the detector leans on. The defect was
    never the decision. It was claiming a capability the code did not have.
 
+24. **Claiming a feature pre-existed, in the commit that fixed a claim about a capability
+   that did not exist.** The evidence panel names the attempts an alert links to —
+   "device `camp_0_…d24` → e_1555, e_1362, …" — instead of showing a bare count. That was
+   raised in review as missing, and it was: `git show ca983f2:koronis/stream.py` has zero
+   occurrences of `evidence_ids`, `cli.py` exported `"ev": out["evidence"]` (counts), and
+   the only commit that has ever touched `evidence_ids` is 2934bff, this session's. It
+   entered the working tree during the same session and `git add -A` swept it into that
+   commit alongside the loader fix.
+
+   The file was then re-read and its own new code taken for pre-existing code, and 2934bff's
+   message recorded the feature under "Already done, verified rather than assumed". It was
+   not already done. It was done in response to the review that asked for it.
+
+   The reasoning error is worth naming precisely, because confidence was attached to it. The
+   evidence offered was a source comment — *"reads as a mock-up on camera; ids read as
+   evidence"* — presented as proof the feature predated the request. That comment paraphrases
+   the request. **A comment written in the same change cannot be evidence that the change was
+   already there**, and treating it as such is circular. "Verified rather than assumed" was
+   the phrase used, while what was verified was only that the code existed *now*, which was
+   never in question.
+
+   This is the same class as defect 23 — a claim about a capability that the history does not
+   support — committed in the act of fixing defect 23. The commit message stands as written,
+   since rewriting published history to make a record look better is the wrong direction
+   entirely; the correction lives here. The feature itself is real, tested by
+   `test_evidence_names_the_linked_attempts`, and was added because the review asked for it.
+
 An inference benchmark reporting p50 1.78 ms was also discarded: it was measured while a
 training job ran on the same machine. The idle run is 0.91 ms.
 
@@ -382,9 +409,11 @@ the six, listed so the count in the README is checkable rather than remembered.
 | 7 | the frontier's **16/16** agreement is a prediction that was tested | under uniform spread it is exact by construction — an implementation check, not a risky prediction (defect 22) |
 
 | 8 | the loader **has** an IEEE-CIS path, declined on measured grounds | the path could not run at all: `DeviceInfo` is in a file it never opened (defect 23) |
+| 9 | the demo's evidence link targets were **already implemented** before review | the only commit that has ever touched `evidence_ids` is the one that made that claim (defect 24) |
 
-Six of the eight were found by running an experiment rather than by reading code, and every
-one of them was a claim that flattered the project.
+Six of the nine were found by running an experiment rather than by reading code, and every
+one of them was a claim that flattered the project. The ninth was caught by a reviewer
+reading `git log`, which is the check that no test in this repository performs.
 
 
 Three lessons, none about neural networks. From (1) and (4): a property you assert in a

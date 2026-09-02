@@ -23,7 +23,7 @@ Python 3.14 is the tested version (see [`.github/workflows/ci.yml`](.github/work
 
 Every headline claim is backed by a **test that asserts the property**, not code that
 merely intends it. This is the whole convention, and most of it was learned by getting it
-wrong: [`docs/engineering-log.md`](docs/engineering-log.md) records twenty-three defects and
+wrong: [`docs/engineering-log.md`](docs/engineering-log.md) records twenty-four defects and
 what each one cost. If you add or change a claim, add the assertion that would fail if it
 broke — and check that it *does* fail, by breaking it on purpose.
 
@@ -45,6 +45,14 @@ Four families of check exist, and they fail in different ways:
 not missing, it is extra. Three whole tables rotted in that blind spot, and then a
 paragraph rotted in the gap the table guard left. If you add a figure check, ask which of
 the two directions it covers.
+
+**One check no test here performs.** Every guard in this repo compares the working tree
+against itself — the docs against `results/`, the recording against the page. None of them
+can tell you whether something you are describing as *pre-existing* actually predates your
+change. `git log -S"<symbol>"` and `git show <ref>:<file>` answer that, and defect 24 is what
+it costs when nobody asks: a feature added in response to review was recorded as already
+present, on the strength of a source comment that was written in the same change. If you are
+about to write "already done", read the history first.
 
 **And measure how strong it is.** `test_published_figures_are_current.py` asserts its own
 false-pass rate by sampling wrong values, because its first version accepted 63.8% of
