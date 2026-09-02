@@ -30,10 +30,13 @@ This is a **semi-synthetic proof of concept**, not production fraud detection.
   in [`cost.py`](../koronis/eval/cost.py) with reasoning. Substitute your own and rerun.
 - **`money_prevented` assumes detection halts the campaign instantly.** Read it as the
   *cost of latency* — how much more is lost per minute of delay — not guaranteed savings.
-- **BIN thresholds are optimistic for the baseline.** Real BIN ranges carry heavy
-  legitimate volume, so `τ_bin` would sit far above the 9 measured here, which makes the
-  baseline stronger than reality.
-- **The drift guardrail is experimental**, as measured above — not a safety control.
+- **BIN thresholds are optimistic for the baseline.** The tuned `τ_bin` here is **236**
+  (`τ_device = 8` is the binding one). Real BIN ranges carry far heavier legitimate volume,
+  so holding a real false-positive budget would push `τ_bin` higher still — a counter that
+  trips less easily than the one measured here. The baseline is therefore given better
+  conditions than reality, which is the conservative direction for this comparison.
+- **The drift guardrail is experimental** — [as measured](evaluation.md#traffic-profile-transfer-stress-test),
+  not a safety control.
 
 ### What a production deployment would still need
 
@@ -56,7 +59,7 @@ and a reviewer should not have to guess where the seams are.
   [Evaluation](evaluation.md#does-the-graph-survive-being-split-across-machines): a
   partitioned graph loses edges, and the routing key decides whether you lose recall or
   precision. [Replication recovers it](evaluation.md#recovering-the-edges-a-partition-deletes) at
-  under 3× the scoring work and is the cheapest routing at every shard count — but the
+  under 3× the scoring work and costs less than not replicating at every shard count — but the
   undivided stream still beats every partitioned configuration
   (₹645 against
   ₹3,212 at sixteen
@@ -66,8 +69,9 @@ and a reviewer should not have to guess where the seams are.
   production version needs a retraining cadence, analyst dispositions fed back as labels,
   and drift monitored on a far slower timescale than detection — the last of which is
   exactly the confound measured above.
-- **Single-merchant scope by default.** The aperture experiment above quantifies what a
-  gateway-wide view is worth; running it that way raises data-governance questions this
+- **Single-merchant scope by default.** The
+  [aperture experiment](evaluation.md#vantage-point-one-merchant-or-the-whole-gateway)
+  quantifies what a gateway-wide view is worth; running it that way raises data-governance questions this
   prototype does not address.
 
 ### Defence-only
@@ -81,6 +85,11 @@ real card numbers, no live endpoints, and no network capability anywhere in the 
 grep -rnE "^(import|from) (requests|urllib|socket|http|aiohttp|subprocess)" koronis/
 # no matches
 ```
+
+That command is the reader-facing check; the enforced one is
+[`tests/test_defence_only.py`](../tests/test_defence_only.py), which walks the AST of every
+module and so also catches an import inside a function, an aliased import, and
+`__import__` / `eval` / `exec`.
 
 It reproduces only attack characteristics already documented publicly in Visa's
 anti-enumeration guidance.

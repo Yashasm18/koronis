@@ -679,6 +679,63 @@ def online(n_streams: int = 6) -> pd.DataFrame:
 
 
 
+
+# ----------------------------------------------------------- feature parity
+def feature_parity(trials: int = 3) -> pd.DataFrame:
+    """One disclosed asymmetry between the detector and its baseline, measured.
+
+    The two feature sets are meant to match, so that all coordination signal has
+    to reach the detector through the graph. One difference survives: the
+    baseline's free-mail flag covers gmail/yahoo/outlook where the detector's
+    covers gmail/outlook, and yahoo is about 15% of generated traffic.
+
+    Rather than assert the difference is immaterial, this measures it. Aligning
+    the two lists would mean re-running every published figure, so the honest
+    move is to publish the size of the gap and let a reader judge it.
+    """
+    import koronis.models.gbdt as gbdt_mod
+
+    train = _train_set(0)
+    original = gbdt_mod.transaction_features
+
+    def matched(events):
+        f = original(events).copy()
+        f["email_is_free"] = (events["email_domain"]
+                              .isin(["gmail.com", "outlook.com"])
+                              .to_numpy().astype(float))
+        return f
+
+    rows = []
+    try:
+        for label, fn in (("as_shipped_gmail_yahoo_outlook", original),
+                          ("matched_to_detector_gmail_outlook", matched)):
+            gbdt_mod.transaction_features = fn
+            for seed in range(trials):
+                ev = _sized_stream(900 + seed * 11, TEST_K, TEST_CAMO, seed)
+                y = ev["label"].to_numpy()
+                m = gbdt_mod.GBDTDetector(seed=seed)
+                m.fit(train)
+                p = m.score_events(ev)
+                rows.append({"baseline_free_mail_list": label, "seed": seed,
+                             "pr_auc": average_precision_score(y, p),
+                             "false_positives": int(((p >= 0.5) & (y == 0)).sum())})
+    finally:
+        gbdt_mod.transaction_features = original
+
+    df = pd.DataFrame(rows)
+    med = (df.groupby("baseline_free_mail_list")[["pr_auc", "false_positives"]]
+             .median().round(4).reset_index())
+    RESULTS.mkdir(exist_ok=True)
+    med.to_csv(RESULTS / "feature_parity.csv", index=False)
+    df.to_csv(RESULTS / "feature_parity_raw.csv", index=False)
+
+    print(f"\nbaseline free-mail list, {trials} trials, medians\n")
+    print(med.to_string(index=False))
+    print("\nThe detector's own list is gmail/outlook. A positive gap here means the "
+          "\nasymmetry favours the baseline; a negative one means it costs the baseline.")
+    return med
+
+
 # ------------------------------------------------------------------- ceiling
 def ceiling(trials: int = 3) -> pd.DataFrame:
     """Is the gap a modelling gap, or an information gap?
@@ -1606,5 +1663,6 @@ if __name__ == "__main__":
      "relations": relations, "aperture": aperture,
      "architecture": architecture, "online": online,
      "resilience": resilience, "ceiling": ceiling,
+     "feature_parity": feature_parity,
      "sharding": sharding, "select": select,
      "replicate": replicate, "capacity": capacity}[cmd]()

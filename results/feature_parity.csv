@@ -1,0 +1,3 @@
+baseline_free_mail_list,pr_auc,false_positives
+as_shipped_gmail_yahoo_outlook,0.2572,453.0
+matched_to_detector_gmail_outlook,0.2482,459.0

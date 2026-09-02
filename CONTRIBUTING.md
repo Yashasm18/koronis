@@ -10,7 +10,7 @@ python -m venv .venv
 .venv/bin/pip install -r requirements.txt -r requirements-dev.txt
 .venv/bin/python -m playwright install chromium     # for the site-render tests
 .venv/bin/python site/build.py                      # the site tests need docs/index.html
-.venv/bin/python -m pytest tests/ -q                # 234 tests, ~2 min
+.venv/bin/python -m pytest tests/ -q                # 247 tests, ~2 min
 ```
 
 `requirements-dev.txt` is test-only. The suite runs without it — the eight tests that
@@ -23,7 +23,7 @@ Python 3.14 is the tested version (see [`.github/workflows/ci.yml`](.github/work
 
 Every headline claim is backed by a **test that asserts the property**, not code that
 merely intends it. This is the whole convention, and most of it was learned by getting it
-wrong: [`docs/engineering-log.md`](docs/engineering-log.md) records eighteen defects and
+wrong: [`docs/engineering-log.md`](docs/engineering-log.md) records twenty defects and
 what each one cost. If you add or change a claim, add the assertion that would fail if it
 broke — and check that it *does* fail, by breaking it on purpose.
 
@@ -36,14 +36,20 @@ Four families of check exist, and they fail in different ways:
 |---|---|
 | Defence-only (`test_defence_only.py`) | the package acquiring a way to reach outside its own process |
 | Model invariants (`test_pseudonymisation_is_lossless.py`, `test_stream.py`) | the model acquiring a dependence it should not have — identifier values, a node's future |
-| Figures (`test_docs_match_results.py`, `test_doc_tables_match_results.py`) | published numbers drifting from `results/` |
+| Figures (`test_docs_match_results.py`, `test_doc_tables_match_results.py`, `test_published_figures_are_current.py`) | published numbers drifting from `results/` — in the tables, and in the prose around them |
 | The demo page (`test_site_renders.py`) | the page throwing, or rendering something the numbers do not say |
 | The recording (`test_demo_recording_is_current.py`) | the README's GIF showing a console that no longer exists |
 
 **A note on direction.** `test_docs_match_results.py` checks that each computed figure
 *appears* in the docs — that can only detect a **missing** number. A superseded number is
-not missing, it is extra. Three whole tables rotted in that blind spot. If you add a
-figure check, ask which of the two directions it covers.
+not missing, it is extra. Three whole tables rotted in that blind spot, and then a
+paragraph rotted in the gap the table guard left. If you add a figure check, ask which of
+the two directions it covers.
+
+**And measure how strong it is.** `test_published_figures_are_current.py` asserts its own
+false-pass rate by sampling wrong values, because its first version accepted 63.8% of
+random percentages. A check nobody has tried to fool reads as coverage while providing
+none.
 
 ## Regenerating everything
 

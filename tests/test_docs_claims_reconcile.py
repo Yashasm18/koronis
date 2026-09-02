@@ -55,6 +55,26 @@ def test_readme_defect_count_matches_the_engineering_log():
         f"enumerates {actual}.")
 
 
+def test_readme_withdrawn_claim_count_matches_the_log():
+    """The count of withdrawn claims drifted once; the log now enumerates them.
+
+    It read "4 retracted claims" while six had actually been withdrawn - the
+    number was maintained by memory rather than by the list, which is the same
+    failure mode as every stale figure in this repo, applied to a count of
+    honesty rather than to a metric.
+    """
+    claimed = re.search(r"\*\*(\d+) published claims withdrawn\*\*", README)
+    assert claimed, "the README's 'What broke?' row no longer states a withdrawn-claim count"
+
+    section = LOG.split("## Claims withdrawn", 1)
+    assert len(section) == 2, "the engineering log has no 'Claims withdrawn' section"
+    rows = [ln for ln in section[1].splitlines()
+            if re.match(r"^\|\s*\d+\s*\|", ln)]
+    assert int(claimed.group(1)) == len(rows), (
+        f"README claims {claimed.group(1)} withdrawn claims, the log enumerates "
+        f"{len(rows)}.")
+
+
 def test_readme_skip_note_matches_the_site_test_module():
     """The 'N tests skip without dev deps' note is arithmetic, so check it."""
     m = re.search(r"the (\w+) tests that drive the demo page\s*\n?\s*skip"

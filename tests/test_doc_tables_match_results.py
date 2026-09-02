@@ -49,6 +49,18 @@ def _i(r, k):
     return str(int(float(r[k])))
 
 
+def _count(r, k):
+    """A count that may be a median across an even number of streams.
+
+    Truncating with int() published 1,859 where the median is 1,859.5, while the
+    README rounds 9.5 to 10 three sections earlier. Neither rounding nor
+    truncating is right for a table of medians: the repo's existing convention,
+    set by the policy table, is to print the fraction.
+    """
+    v = float(r[k])
+    return f"{v:,.1f}".removesuffix(".0")
+
+
 def relations_rows():
     by = {r["variant"]: r for r in _rows("relations.csv")}
     base = float(by["all"]["pr_auc"])
@@ -94,9 +106,9 @@ def resilience_rows():
     for r in _rows("resilience.csv"):
         yield ("| `{}` | {:.0f}% | {} | {} | {} | {} | {} |".format(
             r["fault"], float(r["rate"]) * 100,
-            _i(r, "quarantined"), _i(r, "nan_scores"),
-            _i(r, "device_links_on_corrupted"),
-            _f(r, "campaign_recall"), _i(r, "peak_cache_rows")))
+            _count(r, "quarantined"), _count(r, "nan_scores"),
+            _count(r, "device_links_on_corrupted"),
+            _f(r, "campaign_recall"), _count(r, "peak_cache_rows")))
 
 
 def ceiling_rows():

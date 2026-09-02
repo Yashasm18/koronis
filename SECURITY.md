@@ -32,14 +32,15 @@ README's [Where this would run](README.md#where-this-would-run).
 
 ### What it needs to see
 
-Six per-event values, and three identifiers:
+Five observed values per event, and three identifiers:
 
 | | |
 |---|---|
 | Per-event features | amount (log), a micro-amount flag, the **authorisation outcome**, hour of day, a free-mail flag |
 | Identifiers | `device_id`, `ip_id`, `bin_id` |
 
-That is the whole input. **No card number is read anywhere.** `card_id` exists in the
+That is the whole input — the model's sixth feature is a bias constant, not something an
+integrator sends. **No card number is read anywhere.** `card_id` exists in the
 event schema and is deliberately not a model input — [`velocity.py`](koronis/models/velocity.py)
 excludes it explicitly, because a card-testing attempt uses a fresh card every time, which
 is what makes per-card counting useless against this attack in the first place.

@@ -246,8 +246,74 @@ Every defect below was surfaced by running experiments, not by reading code.
    training budget would have flattered the conclusion in exactly the direction the
    conclusion points.
 
+19. **A paragraph that contradicted the table three lines above it.** The prose under the
+   mechanism ablation reported 0.452 precision, 464 false positives, recall falling to
+   0.695, false positives falling to 53, precision rising to 0.840, and a 31x reduction.
+   The table directly above it said 0.451, 466, 0.812, 35, 0.903 and 10 - a 47x reduction.
+   Six wrong figures in one paragraph, all of them survivors of a re-run that regenerated
+   the table beneath which they sat.
+
+   This is defect 15 again, and the guard written for defect 15 could not see it:
+   `test_doc_tables_match_results.py` re-derives whole tables and nothing around them.
+   `test_published_figures_are_current.py` now reads the prose, requiring every
+   figure-shaped token to be a number some artifact contains.
+
+   That guard was then measured rather than trusted, which changed it twice. Including the
+   per-trial `*_raw.csv` files inflated the accept set to 88,000 values, at which point
+   **30.8% of randomly generated three-decimal figures passed**. Expanding every fraction
+   to a one-decimal percentage was worse: **63.8%** of random percentages passed, so
+   percentages are now deliberately **not** checked rather than checked uselessly - a
+   guard that accepts two wrong values in three reads as coverage while providing none.
+   The false-pass rate of each remaining shape is asserted, so the check fails if it ever
+   drifts back toward vacuous.
+
+   The same sweep found six more stale figures the table guard had never covered:
+   `τ_bin = 9` where `frontier.csv` says **236**; forecast coverage **96.6%** where
+   `policy.json` says 95.3%; event-model ECE **0.0025** against a measured 0.0020; the
+   per-event complexity bound still written as `R = 4` relations and `L = 2` layers when
+   the selected model uses 3 and 3; the README and the demo site disagreeing over whether
+   consolidation saves **seventeen** or **eighteen** times the triage, from the same
+   17.58; and `peak_cache_rows` published as 1,859 by truncating a median of 1,859.5, in a
+   repo that rounds 9.5 to 10 three sections earlier.
+
+20. **Two documents said the detector links on email domain.** It does not: calibration
+   dropped `email_domain` from `MODEL_RELATIONS`, and the distinction is the whole reason
+   `schema.py` keeps two lists. The README and `architecture.md` both described the graph
+   as linking on all four relations, and `architecture.md` additionally claimed the learned
+   relation attention "discovers which entity type carries the signal" - measured at
+   **0.0000 delta at every camouflage level**, which is the opposite of discovering
+   anything.
+
+   Auditing the same claim turned up a real asymmetry nobody had noticed: the baseline's
+   free-mail feature covers gmail/yahoo/outlook while the detector's covers gmail/outlook,
+   and yahoo is about 15% of generated traffic, in two feature sets a code comment called
+   "identical in spirit". Measuring it produced one more lesson. An ad-hoc run said the
+   extra domain *cost* the baseline 0.02 PR-AUC; run on the actual test protocol as
+   `koronis.cli feature_parity`, the sign **flipped** - it helps the baseline by 0.0090,
+   which is the conservative direction. The first number was already written into two
+   files before the second was measured. Published figures come from `results/` for
+   exactly this reason.
+
 An inference benchmark reporting p50 1.78 ms was also discarded: it was measured while a
 training job ran on the same machine. The idle run is 0.91 ms.
+
+## Claims withdrawn
+
+Defects are one thing; a published claim that turned out to be wrong is another. These are
+the six, listed so the count in the README is checkable rather than remembered.
+
+| # | the claim | what replaced it |
+|---|---|---|
+| 1 | raw co-occurrence counting is a strong baseline at **0.894 PR-AUC** | 0.051 once background traffic runs at a realistic density (defect 6) |
+| 2 | the heterophily gate helps, and helps more as camouflage rises | measurably net-negative at two layers; within noise at the three calibration selected (defect 8) |
+| 3 | the per-relation **attention weights** show which relation carries the signal | attention says where a model looked, not what it needed; the per-relation ablation replaced it |
+| 4 | per-event inference **p50 1.78 ms** | measured while a training job shared the machine; the idle run is 0.91 ms |
+| 5 | incident reliability separates cleanly **at both ends** | the bottom bin is under-confident by a factor of three, on 77 of 93 incidents (defect 15) |
+| 6 | memory is bounded by the window rather than by traffic history | true of the sketch, false of the streaming scorer, which retained a row per event ever seen (defect 17) |
+
+Five of the six were found by running an experiment rather than by reading code, and every
+one of them was a claim that flattered the project.
+
 
 Three lessons, none about neural networks. From (1) and (4): a property you assert in a
 test gets checked; a property you merely intend gets silently violated the moment an

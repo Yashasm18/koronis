@@ -24,6 +24,24 @@ boundary, fully camouflaged, with unseen entities, so the hold-out is **extrapol
 not interpolation. Scores are used raw — rescaling each split by its own maximum would
 let every split redefine what a score means.
 
+**One disclosed asymmetry between the models.** The per-transaction baseline's free-mail
+flag covers `gmail/yahoo/outlook`; the detector's covers `gmail/outlook`, and `yahoo.com` is
+roughly 15% of generated traffic. Everything else in the two feature sets matches, because
+the whole point of the comparison is that coordination signal reaches the detector only
+through the graph.
+
+Measured on the test protocol (`python -m koronis.cli feature_parity`), the extra domain
+**helps** the baseline: PR-AUC 0.2572 with it against 0.2482 without, and 453 false
+positives against 459. So the asymmetry runs in the conservative direction — the baseline
+Koronis is compared against is the slightly stronger of the two — and it moves nothing that
+decides a conclusion. Aligning the lists would mean re-running every published figure to
+change a number by 0.0090, so it is disclosed and measured rather than quietly corrected.
+
+*(An earlier version of this note reported the gap the other way round. That measurement
+was taken on an ad-hoc stream rather than the test protocol, and the sign flipped when it
+was run properly — which is why figures here come from `results/` and not from a
+one-off.)*
+
 ### Decision layer
 
 Event alerts are not tasks for a fraud team — they are one campaign. Koronis consolidates
@@ -132,7 +150,7 @@ forecast-only policy should look like. Across the eight streams the oracle still
 
 ### Incident-level calibration
 
-An event model with ECE 0.0025 does not give a calibrated incident probability for free —
+An event model with ECE 0.0020 does not give a calibrated incident probability for free —
 events inside an incident are strongly dependent, and that dependence is the signal.
 Incident risk is a separate model, fitted on 70 calibration incidents pooled across 8
 streams and measured on 93 held-out incidents:
@@ -193,10 +211,10 @@ Removing each mechanism in turn under the same protocol (5 trials, medians;
 | `no_approved` — graph only | 0.916 | 0.903 | 0.812 | 35 | 66.6 s |
 | `no_edges` + `no_approved` | 0.061 | 0.000 | 0.000 | 11 | never |
 
-The authorisation outcome buys earliness (alert at t = 0, but 0.452 precision and 464
+The authorisation outcome buys earliness (alert at t = 0, but 0.451 precision and 466
 false positives). The graph buys precision (first alert moves to 66.6 s and recall drops
-to 0.695, but false positives fall to 53 and precision rises to 0.840). Together: 15 false
-positives at 0.964 precision, a 31× reduction over event-features-alone; with both removed
+to 0.812, but false positives fall to 35 and precision rises to 0.903). Together: 10 false
+positives at 0.976 precision — 466 down to 10 over event-features-alone; with both removed
 the model never fires, so no third signal source is hiding in the features.
 `tests/test_first_event.py` pins the structural claim that the opening attempt has zero
 campaign-derived links and cannot acquire any.
@@ -214,9 +232,10 @@ event at a time and **reproduces batch scores exactly** (asserted to `1e-5` in
 
 **Per-event cost is flat in stream length**, by construction:
 
-- **Time** — `O(R · D_max · L · d)` per `push`: `R = 4` relations, `D_max = 32` (the
+- **Time** — `O(R · D_max · L · d)` per `push`: `R = 3` relations (`MODEL_RELATIONS`;
+  the data carries a fourth, which the detector does not consume), `D_max = 32` (the
   `max_degree` fan-in cap in [`graph/build.py`](../koronis/graph/build.py), which keeps the
-  most recent neighbours), `L = 2` message-passing layers, `d = 32`
+  most recent neighbours), `L = 3` message-passing layers, `d = 32`
   hidden units. None of these depends on the number of events already seen, so measured
   latency holds at ~0.91 ms p50 regardless of stream length.
 - **Space** — `O(W · λ · d)`: the `window_s = 3600 s` span times the arrival rate `λ`.
@@ -617,14 +636,17 @@ it. All three were **silent** — the stream kept running and kept returning ans
 
 | fault | rate | quarantined | NaN scores | invented device links | campaign recall | peak cache rows |
 |---|---:|---:|---:|---:|---:|---:|
-| `clean` | 0% | 0 | 0 | 0 | 0.952 | 1,859 |
-| `null_device` | 1% | 0 | 0 | **0** | 0.952 | 1,859 |
-| `placeholder_device` | 1% | 0 | 0 | **958** | 0.952 | 1,859 |
-| `null_device` | 10% | 0 | 0 | **0** | 0.936 | 1,859 |
-| `placeholder_device` | 10% | 0 | 0 | **19,792** | 0.948 | 1,859 |
+| `clean` | 0% | 0 | 0 | 0 | 0.952 | 1,859.5 |
+| `null_device` | 1% | 0 | 0 | **0** | 0.952 | 1,859.5 |
+| `placeholder_device` | 1% | 0 | 0 | **958** | 0.952 | 1,859.5 |
+| `null_device` | 10% | 0 | 0 | **0** | 0.936 | 1,859.5 |
+| `placeholder_device` | 10% | 0 | 0 | **19,792** | 0.948 | 1,859.5 |
 | `nan_amount` | 5% | 314 | 0 | 0 | 0.884 | 1,773 |
 | `dropped_approved` | 5% | 314 | 0 | 0 | 0.884 | 1,773 |
-| `entity_explosion` | 100% | 0 | 0 | 0 | 0.577 | 1,859 |
+| `entity_explosion` | 100% | 0 | 0 | 0 | 0.577 | 1,859.5 |
+
+Fractional counts are medians across an even number of streams, as in the response-policy
+table above.
 
 **An event that cannot be scored is quarantined, not scored anyway.** A non-finite feature
 used to produce a NaN score, and `NaN >= threshold` is `False` in IEEE arithmetic — so the
@@ -652,7 +674,8 @@ standing between missing data and an invented ring. The null column is 0 at both
 caches: 3,120 events through a 60-second window left 3,120 rows in every layer while 12
 events were actually in scope, and the entity index kept a key for every distinct value
 ever seen — which is precisely what a campaign minting a fresh entity per attempt inflates.
-Both are evicted against the window now: 1,859 peak rows against 6,310 events seen.
+Both are evicted against the window now: a median peak of 1,859.5 rows against
+6,310 events seen.
 
 **`entity_explosion` is the honest floor.** Give every attempt its own device and recall
 falls to 0.577, because a third of the graph has been destroyed. The purity of the largest

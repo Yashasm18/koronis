@@ -19,9 +19,17 @@ FEATURE_NAMES = ["log_amount", "is_micro", "approved", "hour", "email_free", "bi
 def node_features(events: pd.DataFrame, use_approved: bool = True) -> np.ndarray:
     """Per-event features only.
 
-    Deliberately identical in spirit to the GBDT baseline's features: all
-    coordination signal must arrive through the graph, otherwise the ablation
-    proves nothing about graph structure.
+    Deliberately matched to the GBDT baseline's features: all coordination
+    signal must arrive through the graph, otherwise the ablation proves nothing
+    about graph structure.
+
+    One asymmetry survives and is disclosed rather than quietly held: the
+    baseline's free-mail flag covers gmail/yahoo/outlook where this one covers
+    gmail/outlook, and yahoo is about 15% of generated traffic. Measured on the
+    test protocol by `koronis.cli feature_parity`, the extra domain helps the
+    baseline - 0.2572 PR-AUC against 0.2482 - so the asymmetry runs in the
+    conservative direction. Aligning them means re-running every published number
+    to move a figure by 0.0090, so it is documented instead.
     """
     amt = events["amount"].to_numpy(dtype=np.float64)
     f = np.stack([

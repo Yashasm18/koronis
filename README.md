@@ -3,7 +3,7 @@
 > Detection of distributed card-testing campaigns that per-entity velocity rules cannot see at any threshold.
 
 [![CI](https://github.com/Yashasm18/koronis/actions/workflows/ci.yml/badge.svg)](https://github.com/Yashasm18/koronis/actions/workflows/ci.yml)
-[![tests](https://img.shields.io/badge/tests-234%20passing-2ea44f)](tests/)
+[![tests](https://img.shields.io/badge/tests-247%20passing-2ea44f)](tests/)
 [![python](https://img.shields.io/badge/python-3.14-3776ab)](https://www.python.org/)
 [![license: MIT](https://img.shields.io/badge/license-MIT-yellow)](LICENSE)
 [![graph libs](https://img.shields.io/badge/graph%20libraries-none-8a3ffc)](koronis/models/layers.py)
@@ -36,12 +36,12 @@ python -m venv .venv
 .venv/bin/pip install -r requirements.txt -r requirements-dev.txt
 .venv/bin/python -m playwright install chromium   # the site tests drive the demo page
 .venv/bin/python site/build.py                    # they need docs/index.html to exist
-.venv/bin/python -m pytest tests/ -q              # 234 tests, ~2 min
+.venv/bin/python -m pytest tests/ -q              # 247 tests, ~2 min
 .venv/bin/python -m koronis.cli ablation          # reproduces the headline table below
 ```
 
 The suite runs without `requirements-dev.txt` — the eight tests that drive the demo page
-skip — but then 226 are collected rather than 234, and the test-count check says so.
+skip — but then 239 are collected rather than 247, and the test-count check says so.
 
 ## Key results
 
@@ -146,8 +146,12 @@ flowchart TB
     DRIFT -->|"yes"| REV --> OUT
 ```
 
-Attempts are nodes; two are linked when they share a device, IP, BIN range or email domain
-inside a window. Edges point **backwards in time**, so a streaming evaluation cannot read
+Attempts are nodes; two are linked when they share a **device, IP or BIN range** inside a
+window. Email domain is deliberately not among them: the
+[per-relation ablation](docs/evaluation.md#which-entity-type-carries-the-signal) found it
+net-negative for the detector, and calibration dropped it — while incident consolidation
+still links on it, where the frequency cap governs it. `schema.py` keeps the two sets
+apart for exactly that reason. Edges point **backwards in time**, so a streaming evaluation cannot read
 the future — which is also what lets the replay reproduce batch scores exactly. Aggregation
 is `torch.index_add_`: **no DGL, no PyTorch Geometric**.
 
@@ -189,7 +193,7 @@ shape as the velocity counters most gateways already run there.
 **Sizing, from measured constants.** At 0.91 ms per event and 1,095 events/sec per worker,
 nine workers cover ~9,900 events/sec. Memory is bounded by the window rather than by
 traffic history — measured, because it was not always true: the scorer's caches peak at
-**1,859 rows against 6,310 events seen**, and the frequency state is fixed at 4 MB however
+**a median peak of 1,859.5 rows against 6,310 events seen**, and the frequency state is fixed at 4 MB however
 many distinct entity values pass through. That last part matters, because a card-testing
 campaign mints a fresh card id per attempt.
 
@@ -255,6 +259,7 @@ is read from there** — nothing is transcribed by hand.
 .venv/bin/python -m koronis.cli aperture        # merchant view vs gateway view
 .venv/bin/python -m koronis.cli resilience      # fault injection: how it fails, measured
 .venv/bin/python -m koronis.cli ceiling         # can any per-event model close the gap
+.venv/bin/python -m koronis.cli feature_parity  # the one disclosed baseline asymmetry
 .venv/bin/python -m koronis.cli incidents       # alerts -> incidents -> forecast -> action
 .venv/bin/python -m koronis.cli drift           # traffic-profile transfer stress test
 .venv/bin/python -m koronis.cli latency         # precision / recall over time
@@ -272,15 +277,15 @@ python site/build.py                            # results/ -> docs/index.html
 | Does it detect what velocity rules cannot? | 0.997 PR-AUC vs 0.062, on a hold-out spread past the boundary | [Evaluation → protocol](docs/evaluation.md#protocol) |
 | What does a false positive cost? | costed in rupees; 10 FPs against a GBDT's 476 | [Evaluation → decision layer](docs/evaluation.md#decision-layer) |
 | Which mechanism carries the signal? | outcome buys earliness, the graph buys precision | [Evaluation](docs/evaluation.md#which-mechanism-carries-the-signal) |
-| Do the architectural claims hold? | one did not — the heterophily gate was **net-negative**, and selection removed it | [Evaluation](docs/evaluation.md#does-the-architecture-earn-its-place) |
+| Do the architectural claims hold? | one did not — the heterophily gate was **net-negative at two layers, noise at three**, and selection removed it | [Evaluation](docs/evaluation.md#does-the-architecture-earn-its-place) |
 | Was the model sized, or just chosen? | sized — 32×3 selected on calibration from a 9-point grid, and it held up on test | [Evaluation](docs/evaluation.md#closing-the-loop-selecting-an-architecture-without-touching-test) |
 | Is a gateway's wider view worth anything? | measured: the gap grows with the number of merchants | [Evaluation](docs/evaluation.md#vantage-point-one-merchant-or-the-whole-gateway) |
 | Does it survive a different merchant? | flagged on all three shifted profiles; the guardrail is **experimental** | [Evaluation](docs/evaluation.md#traffic-profile-transfer-stress-test) |
 | Can it run online? | 0.91 ms p50; streaming reproduces batch scores exactly | [Evaluation](docs/evaluation.md#streaming-and-inference-latency) |
 | Is the *whole* pipeline causal? | yes — consolidation too, via a sliding count-min sketch in fixed memory | [Evaluation](docs/evaluation.md#making-consolidation-causal) |
 | Does it survive being split across machines? | measured — and PR-AUC and rupees disagree about which routing is better | [Evaluation](docs/evaluation.md#does-the-graph-survive-being-split-across-machines) |
-| Can the loss be recovered? | yes — replication restores recall 0.65 → 0.99 and is the cheapest routing at every shard count | [Evaluation](docs/evaluation.md#recovering-the-edges-a-partition-deletes) |
-| What broke? | 18 defects, **4 retracted claims** | [Engineering log](docs/engineering-log.md) |
+| Can the loss be recovered? | yes — replication restores recall 0.65 → 0.99 at sixteen shards, and costs less than not replicating at every shard count | [Evaluation](docs/evaluation.md#recovering-the-edges-a-partition-deletes) |
+| What broke? | 20 defects, and **6 published claims withdrawn** | [Engineering log](docs/engineering-log.md#claims-withdrawn) |
 
 ## Limitations
 

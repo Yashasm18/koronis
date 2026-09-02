@@ -1,0 +1,7 @@
+baseline_free_mail_list,seed,pr_auc,false_positives
+as_shipped_gmail_yahoo_outlook,0,0.14144601009803776,453
+as_shipped_gmail_yahoo_outlook,1,0.2571725706661656,399
+as_shipped_gmail_yahoo_outlook,2,0.3028909311941766,461
+matched_to_detector_gmail_outlook,0,0.14466260517976384,459
+matched_to_detector_gmail_outlook,1,0.2482245305052245,396
+matched_to_detector_gmail_outlook,2,0.3037636848661156,466
