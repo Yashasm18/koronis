@@ -36,11 +36,23 @@ INDEX = ROOT / "docs" / "index.html"
 SPEED = 4
 W, H = 1280, 800
 
-# 64 colours is ample for a near-monochrome console, and 8 fps keeps the GIF near
-# 5 MB. The previous recording compressed better only because the broken frame
+# 64 colours is ample for a near-monochrome console, and 8 fps keeps the size
+# down. The previous recording compressed better only because the broken frame
 # throttle produced near-duplicate frames; a recording that actually animates
 # needs the palette and frame rate turned down instead.
-GIF_FPS, GIF_COLORS, GIF_W = 8, 64, 760
+# 640 px rather than 760: measured at 2.1 MB against 2.9 MB for the same 20 s,
+# and the headline figures, feed rows and threshold label all stay legible - the
+# GIF is a teaser, the MP4 and the live site carry the detail.
+GIF_FPS, GIF_COLORS, GIF_W = 8, 64, 640
+
+# The GIF is trimmed to the product story - load, replay, the finished board,
+# the incident panel and the dossier - and stops before the documentation tour.
+# That tour is worth watching and is why the MP4 exists; it is not worth making
+# a reader wait for. At 6.5 MB the full-length GIF left the top of the README
+# blank for three to four seconds, because a browser will not paint an animated
+# GIF until a large part of it has arrived: the first frame here is decodable
+# after 3,471 bytes, so the delay was transfer, not decode.
+GIF_SECONDS = 20
 MP4_W, MP4_H = 1200, 750
 
 
@@ -119,9 +131,9 @@ def encode(src: pathlib.Path, tmp: pathlib.Path) -> None:
     # pass would quantise per frame and make flat panels crawl.
     pal = tmp / "palette.png"
     scale = f"scale={GIF_W}:-1:flags=lanczos"
-    run("-i", src, "-vf",
+    run("-t", GIF_SECONDS, "-i", src, "-vf",
         f"fps={GIF_FPS},{scale},palettegen=stats_mode=diff:max_colors={GIF_COLORS}", pal)
-    run("-i", src, "-i", pal, "-lavfi",
+    run("-t", GIF_SECONDS, "-i", src, "-i", pal, "-lavfi",
         f"fps={GIF_FPS},{scale}[x];"
         "[x][1:v]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle",
         ASSETS / "koronis-demo.gif")

@@ -18,7 +18,9 @@
 > blocks a payment, and no code path here can.
 
 *Detection, incident consolidation and the cost-optimal action ladder on a held-out
-campaign. [Full screen recording (MP4)](docs/assets/koronis-demo.mp4) · run it live at
+campaign, replayed at 4×. The
+[full recording (MP4)](docs/assets/koronis-demo.mp4) continues into the evaluation and
+method tabs · run it live at
 **[yashasm18.github.io/koronis](https://yashasm18.github.io/koronis/)**.*
 
 ## What it solves
