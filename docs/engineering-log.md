@@ -294,6 +294,44 @@ Every defect below was surfaced by running experiments, not by reading code.
    files before the second was measured. Published figures come from `results/` for
    exactly this reason.
 
+21. **The experiment that would have flattered the project, and did not survive its own
+   diagnostic.** The frontier draws the *baseline's* failure boundary and shows Koronis
+   detecting everywhere on the grid, which is half a characterisation. So spread was pushed
+   to `k = n`, where every attempt carries its own device, IP and BIN and there is no
+   campaign subgraph left at all. The model returned **recall 1.0 and PR-AUC 0.9913**.
+
+   That looked like a headline and is an artifact. At `k = n` every campaign event has
+   degree **zero** while background events average about 46 and 0.02% are isolated, because
+   the generator draws campaign entities from a pool disjoint from the background's. "Has no
+   neighbours at all" is then a perfect label proxy, free, and it is what the model reads —
+   coordination is by construction not there to read. Real traffic is full of first-time
+   customers on a fresh device, IP and BIN; a background where essentially no legitimate
+   event is isolated cannot test this.
+
+   The sweep is published as an **invalid measurement**, with the diagnostic columns that
+   invalidate it, rather than as a favourable result. The limitation it was built to probe
+   stands unmeasured, exactly as the README already said. This is defect 6 again — a
+   simulation that makes the problem easy — caught this time before the number reached a
+   document.
+
+22. **A prediction that could not have failed.** The frontier's headline was 16 of 16 cells
+   agreeing with `k ≥ n/τ`, presented as arithmetic derived on paper and then tested. The
+   generator spreads attempts *uniformly*, so each entity carries exactly `n/k` and a counter
+   trips precisely when `k ≤ n/τ`: under uniform spread the agreement is **exact by
+   construction**. It is an implementation check, which is worth having and is now called
+   one, not a risky prediction that survived. Defect 4 had already recorded that agreement
+   only reached 100% once spread was made uniform; the README kept selling the 100%.
+
+   Under realistic non-uniform spread the busiest entity carries more than `n/k`, so a
+   counter trips at a *higher* `k` than `n/τ` predicts and the genuinely blind region is
+   smaller than the dashed line — which means the frontier as drawn is generous to this
+   project, not to the baseline.
+
+   Two documents also had the cost model charging this merchant for chargebacks on cards the
+   attack validated. Those land on whichever merchant the card is later spent at, usually
+   somebody else. The constant is unchanged and still a declared assumption; the reasoning
+   behind it no longer claims a loss the merchant does not bear.
+
 An inference benchmark reporting p50 1.78 ms was also discarded: it was measured while a
 training job ran on the same machine. The idle run is 0.91 ms.
 
@@ -311,7 +349,9 @@ the six, listed so the count in the README is checkable rather than remembered.
 | 5 | incident reliability separates cleanly **at both ends** | the bottom bin is under-confident by a factor of three, on 77 of 93 incidents (defect 15) |
 | 6 | memory is bounded by the window rather than by traffic history | true of the sketch, false of the streaming scorer, which retained a row per event ever seen (defect 17) |
 
-Five of the six were found by running an experiment rather than by reading code, and every
+| 7 | the frontier's **16/16** agreement is a prediction that was tested | under uniform spread it is exact by construction — an implementation check, not a risky prediction (defect 22) |
+
+Six of the seven were found by running an experiment rather than by reading code, and every
 one of them was a claim that flattered the project.
 
 

@@ -11,6 +11,15 @@ genuinely fresh infrastructure for every attempt leaves no graph signal — a re
 and also the point of Claim 2: driving `k → n` costs one unit of infrastructure per
 attempt.
 
+**That limit is stated, not measured, and the attempt to measure it failed.** Pushing the
+sweep to `k = n` ([saturation](evaluation.md#where-does-this-model-stop-working--an-invalid-measurement-published))
+returns recall 1.0, which is a fact about the generator rather than the model: campaign
+entities come from a pool disjoint from the background's, so at `k = n` every campaign event
+has degree zero while essentially no legitimate event does, and "has no neighbours" becomes
+a free label. Real traffic is full of first-time customers on fresh infrastructure. Testing
+this properly needs a background with a realistic first-time-customer rate — a change to the
+data generator, not the model — and it has not been made.
+
 This is a **semi-synthetic proof of concept**, not production fraud detection.
 
 - **Background traffic is synthetic, and keeping it that way was a measured call.** The

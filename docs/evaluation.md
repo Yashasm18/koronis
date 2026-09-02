@@ -574,6 +574,44 @@ Entity ids are namespaced per merchant. Without that, two merchants would reuse 
 `d17` and the pooled graph would link strangers — the gateway view would then win on an
 artefact. A test asserts no background entity is shared across merchants.
 
+### Where does *this* model stop working? — an invalid measurement, published
+
+The frontier draws the baseline's failure boundary and shows Koronis detecting across the
+whole grid. That is half a characterisation: a detector with no measured failure boundary
+has not been characterised. So spread was pushed to `k = n`, where every attempt carries its
+own device, IP and BIN and there is no campaign subgraph left at all
+(`python -m koronis.cli saturation`).
+
+The model reports **recall 1.0 and PR-AUC 0.9913** there. That is not a result about the
+model:
+
+| n | k | k/n | koronis recall | campaign events isolated | background events isolated | entity values shared with background |
+|---:|---:|---:|---:|---:|---:|---:|
+| 400 | 200 | 0.5 | 1.0 | 0.0 | 0.0002 | 0 |
+| 400 | 400 | 1.0 | 1.0 | **1.0** | **0.0002** | **0** |
+| 800 | 400 | 0.5 | 1.0 | 0.0 | 0.0002 | 0 |
+| 800 | 800 | 1.0 | 1.0 | **1.0** | **0.0002** | **0** |
+
+At `k = n` every campaign event has degree **zero** while background events average about
+46 and essentially none are isolated, because the generator draws campaign entities from a
+pool disjoint from the background's. "Has no neighbours at all" is then a **perfect label
+proxy**, available for free, and that is what the model is reading — not coordination,
+which by construction is not there.
+
+Real traffic is full of first-time customers on a fresh device, IP and BIN. A background in
+which 0.02% of legitimate events are isolated cannot test the claim this sweep was built to
+test. So the sweep is published as an **invalid measurement** rather than as a favourable
+one, and the limitation it was meant to probe — an attacker on genuinely fresh
+infrastructure leaves no graph signal — **stands unmeasured**, exactly as
+[Limitations](limitations.md) says.
+
+Testing it properly needs a background with a realistic first-time-customer rate, so that an
+isolated declined attempt is ordinary rather than diagnostic. That is a change to the data
+generator, not to the model, and it is not made here: it would move every published number
+in this repository, days from a deadline, to measure one boundary. The honest position is
+that the boundary is stated arithmetically, is not measured, and that the experiment which
+looked like it measured it did not.
+
 ### The per-event ceiling
 
 Every headline comparison here is against per-transaction models, so the obvious objection

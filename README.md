@@ -3,13 +3,19 @@
 > Detection of distributed card-testing campaigns that per-entity velocity rules cannot see at any threshold.
 
 [![CI](https://github.com/Yashasm18/koronis/actions/workflows/ci.yml/badge.svg)](https://github.com/Yashasm18/koronis/actions/workflows/ci.yml)
-[![tests](https://img.shields.io/badge/tests-247%20passing-2ea44f)](tests/)
+[![tests](https://img.shields.io/badge/tests-248%20passing-2ea44f)](tests/)
 [![python](https://img.shields.io/badge/python-3.14-3776ab)](https://www.python.org/)
 [![license: MIT](https://img.shields.io/badge/license-MIT-yellow)](LICENSE)
 [![graph libs](https://img.shields.io/badge/graph%20libraries-none-8a3ffc)](koronis/models/layers.py)
 [![track](https://img.shields.io/badge/Razorpay%20Buildathon-Track%2002%20·%20AI%20Risk%20Manager-0c2451)](https://razorpay.com/buildathon/)
 
 ![Koronis demo — held-out campaign replayed event by event](docs/assets/koronis-demo.gif)
+
+> **Defence-only.** No network capability anywhere in the package — no HTTP client, no
+> socket, no subprocess, no process spawning — asserted per module by
+> [`tests/test_defence_only.py`](tests/test_defence_only.py). No real card data, no real BIN
+> ranges. Every recommended action is a recommendation in a simulated workflow; nothing
+> blocks a payment, and no code path here can.
 
 *Detection, incident consolidation and the cost-optimal action ladder on a held-out
 campaign. [Full screen recording (MP4)](docs/assets/koronis-demo.mp4) · run it live at
@@ -19,14 +25,22 @@ campaign. [Full screen recording (MP4)](docs/assets/koronis-demo.mp4) · run it 
 
 **Card testing.** A fraudster pushes thousands of ₹1–₹20 charges through a merchant's
 checkout to find which stolen cards are still live. The checkout becomes a free
-card-validation service, and the merchant pays: an authorisation fee on every attempt
-including declines, network penalties when the decline rate spikes, and chargebacks weeks
-later on the cards their own site validated.
+card-validation service, and the merchant pays: a per-authorisation fee on the attempts
+(whether declines carry one depends on the pricing plan), network penalties once the
+decline ratio crosses scheme thresholds, disputes on the test charges that succeed, and a
+decline profile degraded while the attack runs.
+
+**It is also upstream of a chargeback class.** The cards a campaign validates are resold
+and spent elsewhere, so the large downstream fraud lands on *other* merchants — which is
+why this repo does not count it against the merchant being tested. That is the scope
+choice, stated rather than hidden: the track names fraud, returns and chargebacks, and this
+covers **one loss class end to end with the money measured**, rather than three shallowly.
+Card testing is the cause; the disputes are a symptom weeks later.
 
 **Velocity rules cannot catch it — not because they are tuned badly, but by arithmetic.**
-An attacker spreading `n` attempts across `k ≥ n/τ` entities keeps every counter under
-threshold at *any* threshold. Koronis is a **defence-only detector and decision-support
-prototype** built for exactly that region.
+An attacker spreading `n` attempts across `k ≥ n/τ` entities keeps every **per-entity**
+counter under threshold at *any* threshold. Koronis is a **defence-only detector and
+decision-support prototype** built for exactly that region.
 
 Its contribution is not that it beats its baselines. It is a **characterisation of when
 detection is possible at all** — stated as arithmetic, then tested.
@@ -36,68 +50,18 @@ python -m venv .venv
 .venv/bin/pip install -r requirements.txt -r requirements-dev.txt
 .venv/bin/python -m playwright install chromium   # the site tests drive the demo page
 .venv/bin/python site/build.py                    # they need docs/index.html to exist
-.venv/bin/python -m pytest tests/ -q              # 247 tests, ~2 min
+.venv/bin/python -m pytest tests/ -q              # 248 tests, ~2 min
 .venv/bin/python -m koronis.cli ablation          # reproduces the headline table below
 ```
 
 The suite runs without `requirements-dev.txt` — the eight tests that drive the demo page
-skip — but then 239 are collected rather than 247, and the test-count check says so.
+skip — but then 240 are collected rather than 248, and the test-count check says so.
 
 ## Key results
 
-**Why the graph wins, in one line.** Per-entity signal dilutes as `n/k`, but the number of
-attempt-pairs sharing an entity grows as `n²/k` — so the graph's advantage *increases* with
-attack size, and the attacker's only escape is `k → n`: one fresh device, IP and BIN per
-attempt, bounded by infrastructure cost.
-
-**Predicted vs. measured detectability boundary**, `predicted_boundary_k(n, τ) = n/τ`, on
-a 4×4 grid (`python -m koronis.cli frontier`):
-
-| n | k=2 | k=10 | k=50 | k=200 | predicted boundary `n/τ` |
-|---:|:---:|:---:|:---:|:---:|---:|
-| 200 | fires | fires | **blind** | **blind** | 25 |
-| 400 | fires | fires | **blind** | **blind** | 50 |
-| 800 | fires | fires | fires | **blind** | 100 |
-| 1600 | fires | fires | fires | **blind** | 200 |
-
-The binding threshold is `τ = 8` (the device counter; `τ_ip = 61`, `τ_bin = 236`). Every
-cell agrees with `k ≥ n/τ` (**16 / 16**). Koronis detects in all sixteen.
-
-![Detectability frontier: 16 measured cells against the boundary k = n/τ](docs/assets/frontier.svg)
-
-The dashed line is arithmetic, drawn before any run. Every measured cell falls on the side
-it predicts, and Koronis detects across the whole grid — including the entire region above
-the line, where no per-entity counter can trip at any threshold.
-
-**Held-out detection**, median with the 2.5th / 97.5th percentiles observed across 10
-independent trials (`python -m koronis.cli seeds`):
-
-| detector | PR-AUC | precision | recall | false positives | detected |
-|---|---:|---:|---:|---:|---:|
-| `velocity_tuned` | 0.062 `[0.062, 0.062]` | 0.000 | 0.000 | 44 | 0 / 10 |
-| `decline_burst` *(no graph, no learning)* | 0.222 `[0.205, 0.234]` | 0.000 | 0.000 | 0 | 3 / 10 |
-| `shared_entity` *(graph, no learning)* | 0.051 `[0.050, 0.051]` | 0.000 | 0.000 | 40 | 0 / 10 |
-| `gbdt_per_txn` | 0.332 `[0.311, 0.352]` | 0.410 | 0.836 | 476 | 10 / 10 |
-| **`koronis_graph`** | **0.997** `[0.996, 0.999]` | **0.977** | **0.990** | **10** | **10 / 10** |
-
-Threshold rules do not degrade here — they stop working: at `k = 60` against a binding
-`τ = 8`, no counter can trip. The per-transaction model detects every time but at **476
-false positives against Koronis's 10**. Recall was never the hard part; precision at a
-usable alert volume is.
-
-Every part of the architecture producing these numbers was **chosen on the calibration
-split**, never by hand: which relations to keep and whether to gate
-([eight candidates](docs/evaluation.md#closing-the-loop-selecting-an-architecture-without-touching-test)),
-and how large to make it — 32 hidden units and 3 layers,
-9,171 parameters, from a
-[nine-point width × depth grid](docs/evaluation.md#was-the-model-sized-or-just-chosen).
-Test was read once, after each choice was already made.
-
-**Detection latency.** At one minute Koronis has already recalled every campaign attempt
-so far, at 0.46 precision against the per-transaction model's 0.09; by ten minutes it is at
-0.90 precision with 0.94 recall. None of the three learning-free detectors ever crosses its
-frozen threshold on this campaign.
-→ [full latency curves](docs/evaluation.md#streaming-and-inference-latency)
+**What it produces is a decision, not a score.** A merchant does not lose money to a
+probability; it loses money to attempts nobody acted on. So the headline is the funnel and
+its price:
 
 **An alert is not a task.** Hundreds of event alerts are one campaign, so Koronis
 consolidates them and picks the intervention with the lowest expected rupee cost:
@@ -122,6 +86,81 @@ never the true remaining count. The costs below are medians across all 8 test st
 Event thresholding reaches the same decision and hands an analyst **eighteen times the
 triage**. Consolidation, not detection, is the difference. Not knowing the future still
 costs — ₹3,405 against the oracle's ₹3,145.
+
+The detection work below is the evidence that the thing making those decisions is sound.
+
+**Why the graph wins, in one line.** Per-entity signal dilutes as `n/k`, but the number of
+attempt-pairs sharing an entity grows as `n²/k` — so the graph's advantage *increases* with
+attack size, and the attacker's only escape is `k → n`: one fresh device, IP and BIN per
+attempt, bounded by infrastructure cost.
+
+**Predicted vs. measured detectability boundary**, `predicted_boundary_k(n, τ) = n/τ`, on
+a 4×4 grid (`python -m koronis.cli frontier`):
+
+| n | k=2 | k=10 | k=50 | k=200 | predicted boundary `n/τ` |
+|---:|:---:|:---:|:---:|:---:|---:|
+| 200 | fires | fires | **blind** | **blind** | 25 |
+| 400 | fires | fires | **blind** | **blind** | 50 |
+| 800 | fires | fires | fires | **blind** | 100 |
+| 1600 | fires | fires | fires | **blind** | 200 |
+
+The binding threshold is `τ = 8` (the device counter; `τ_ip = 61`, `τ_bin = 236`). Every
+cell agrees with `k ≥ n/τ` (**16 / 16**), and Koronis detects in all sixteen.
+
+**What that 16/16 is and is not.** The campaign generator spreads attempts *uniformly*
+across entities, so each one carries exactly `n/k` attempts and a counter trips precisely
+when `k ≤ n/τ`. Under uniform spread the agreement is therefore **exact by construction**:
+it confirms the pipeline implements the arithmetic, which is an implementation check worth
+having, not a risky prediction that survived. Under realistic non-uniform spread the
+busiest entity carries more than `n/k`, so a counter trips at a *higher* `k` than `n/τ`
+predicts — the genuinely blind region is smaller than the dashed line, and a sloppy attacker
+is caught earlier. This repo learned that the hard way: an earlier version disagreed on 25%
+of the grid purely because BINs were sampled rather than spread evenly
+([defect 4](docs/engineering-log.md)).
+
+![Detectability frontier: 16 measured cells against the boundary k = n/τ](docs/assets/frontier.svg)
+
+The dashed line is arithmetic, drawn before any run. Every measured cell falls on the side
+it predicts, and Koronis detects across the whole grid — including the entire region above
+the line, where no per-entity counter can trip at any threshold.
+
+**Held-out detection**, median with the 2.5th / 97.5th percentiles observed across 10
+independent trials (`python -m koronis.cli seeds`):
+
+| detector | PR-AUC | precision | recall | false positives | **false-positive cost** | detected |
+|---|---:|---:|---:|---:|---:|---:|
+| `velocity_tuned` | 0.062 `[0.062, 0.062]` | 0.000 | 0.000 | 44 | ₹1,760 | 0 / 10 |
+| `decline_burst` *(no graph, no learning)* | 0.222 `[0.205, 0.234]` | 0.000 | 0.000 | 0 | ₹0 | 3 / 10 |
+| `shared_entity` *(graph, no learning)* | 0.051 `[0.050, 0.051]` | 0.000 | 0.000 | 40 | ₹1,600 | 0 / 10 |
+| `gbdt_per_txn` | 0.332 `[0.311, 0.352]` | 0.410 | 0.836 | 476 | **₹19,040** | 10 / 10 |
+| **`koronis_graph`** | **0.997** `[0.996, 0.999]` | **0.977** | **0.990** | **10** | **₹400** | **10 / 10** |
+
+False-positive cost is the published count × **₹40**, the declared cost of turning away one
+legitimate checkout ([`cost.py`](koronis/eval/cost.py)). Like every rupee figure here it is
+a *declared assumption, not a measurement* — substitute your own and re-run. `decline_burst`
+costs ₹0 because it never fires at all: it detects 3 campaigns in 10 and alerts on nothing
+else. **BIN thresholds are optimistic for the baseline** — the tuned `τ_bin = 236` would sit
+higher on real traffic, so the counters here trip more easily than they would in production
+([full caveat](docs/limitations.md#what-is-assumed-not-measured)).
+
+Threshold rules do not degrade here — they stop working: at `k = 60` against a binding
+`τ = 8`, no counter can trip. The per-transaction model detects every time but at **476
+false positives against Koronis's 10**. Recall was never the hard part; precision at a
+usable alert volume is.
+
+Every part of the architecture producing these numbers was **chosen on the calibration
+split**, never by hand: which relations to keep and whether to gate
+([eight candidates](docs/evaluation.md#closing-the-loop-selecting-an-architecture-without-touching-test)),
+and how large to make it — 32 hidden units and 3 layers,
+9,171 parameters, from a
+[nine-point width × depth grid](docs/evaluation.md#was-the-model-sized-or-just-chosen).
+Test was read once, after each choice was already made.
+
+**Detection latency.** At one minute Koronis has already recalled every campaign attempt
+so far, at 0.46 precision against the per-transaction model's 0.09; by ten minutes it is at
+0.90 precision with 0.94 recall. None of the three learning-free detectors ever crosses its
+frozen threshold on this campaign.
+→ [full latency curves](docs/evaluation.md#streaming-and-inference-latency)
 
 ## Architecture
 
@@ -248,6 +287,7 @@ is read from there** — nothing is transcribed by hand.
 .venv/bin/python -m koronis.cli ablation        # headline detector comparison
 .venv/bin/python -m koronis.cli seeds           # 10 trials, median + across-run range
 .venv/bin/python -m koronis.cli frontier        # predicted vs measured boundary
+.venv/bin/python -m koronis.cli saturation      # spread pushed to k = n; why it is not measurable here
 .venv/bin/python -m koronis.cli mechanism       # which mechanism carries the signal
 .venv/bin/python -m koronis.cli relations       # which entity type carries the signal
 .venv/bin/python -m koronis.cli architecture    # do the gate and the attention earn their place
@@ -285,7 +325,7 @@ python site/build.py                            # results/ -> docs/index.html
 | Is the *whole* pipeline causal? | yes — consolidation too, via a sliding count-min sketch in fixed memory | [Evaluation](docs/evaluation.md#making-consolidation-causal) |
 | Does it survive being split across machines? | measured — and PR-AUC and rupees disagree about which routing is better | [Evaluation](docs/evaluation.md#does-the-graph-survive-being-split-across-machines) |
 | Can the loss be recovered? | yes — replication restores recall 0.65 → 0.99 at sixteen shards, and costs less than not replicating at every shard count | [Evaluation](docs/evaluation.md#recovering-the-edges-a-partition-deletes) |
-| What broke? | 20 defects, and **6 published claims withdrawn** | [Engineering log](docs/engineering-log.md#claims-withdrawn) |
+| What broke? | 22 defects, and **7 published claims withdrawn** | [Engineering log](docs/engineering-log.md#claims-withdrawn) |
 
 ## Limitations
 

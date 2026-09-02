@@ -1439,6 +1439,79 @@ def frontier() -> pd.DataFrame:
     return df
 
 
+
+def saturation() -> pd.DataFrame:
+    """Where does *this* model stop working? - and why this sweep cannot say.
+
+    The frontier draws the baseline's failure boundary and shows Koronis
+    detecting across the whole grid. That is half a characterisation: a detector
+    with no measured failure boundary has not been characterised. So `k` is
+    pushed to `n`, where every attempt carries its own device, IP and BIN, the
+    campaign shares nothing with itself, and there is no campaign subgraph left.
+
+    The model still reports recall 1.0 there. That is not a result about the
+    model - it is a result about the generator, and the diagnostic columns say
+    so. At `k = n` every campaign event has degree **zero** while background
+    events average ~46 and none are isolated, because the campaign draws its
+    entities from a pool disjoint from the background's. "Has no neighbours at
+    all" is then a perfect label proxy, available for free, and the model is
+    reading that rather than any coordination.
+
+    Real traffic is full of first-time customers on a fresh device, IP and BIN.
+    A background where zero legitimate events are isolated cannot test the claim
+    this sweep was built to test, so the sweep is published as an invalid
+    measurement rather than as a favourable one. The limitation it was meant to
+    probe - an attacker on genuinely fresh infrastructure leaves no graph signal
+    - stands unmeasured, which is what the README already says.
+    """
+    import numpy as np
+
+    from .data.schema import MODEL_RELATIONS
+    from .eval.frontier import sweep
+    from .graph.build import build_edges
+
+    df = sweep(n_values=[400, 800], k_values=[2, 10, 50, 100, 200, 400, 800],
+               fp_budget=FP_BUDGET, seed=0, window_s=WINDOW_S,
+               n_background=N_BACKGROUND)
+    df["k_over_n"] = (df["k"] / df["n"]).round(3)
+
+    # The diagnostic that invalidates the sweep, measured rather than asserted.
+    bg = load_background(path=None, n_rows=N_BACKGROUND, seed=0)
+    diag = []
+    for n, k in zip(df["n"], df["k"]):
+        ev = inject(bg, [CampaignSpec(n_attempts=int(n), k_devices=int(k),
+                                      k_ips=int(k), n_bins=int(k),
+                                      duration_s=WINDOW_S,
+                                      start_ts=float(bg["ts"].iloc[300]))], seed=0)
+        y = ev["label"].to_numpy() == 1
+        deg = np.zeros(len(ev))
+        for arr in build_edges(ev, window_s=WINDOW_S,
+                               relations=MODEL_RELATIONS).values():
+            if arr.shape[1]:
+                np.add.at(deg, arr[0], 1)
+                np.add.at(deg, arr[1], 1)
+        shared = sum(len(set(ev[r][y]) & set(ev[r][~y])) for r in MODEL_RELATIONS)
+        diag.append({"campaign_isolated": round(float((deg[y] == 0).mean()), 4),
+                     "background_isolated": round(float((deg[~y] == 0).mean()), 4),
+                     "entity_values_shared_with_background": shared})
+    df = pd.concat([df.reset_index(drop=True), pd.DataFrame(diag)], axis=1)
+
+    df = df[["n", "k", "k_over_n", "velocity_detected", "koronis_detected",
+             "koronis_recall", "koronis_pr_auc", "campaign_isolated",
+             "background_isolated", "entity_values_shared_with_background"]]
+    RESULTS.mkdir(exist_ok=True)
+    df.to_csv(RESULTS / "saturation.csv", index=False)
+
+    print("\nspread pushed to one entity per attempt, frozen model and threshold\n")
+    print(df.to_string(index=False))
+    print("\nRead the last three columns before the recall column. Where "
+          "campaign_isolated\nreaches 1.0 while background_isolated stays at 0.0 and no "
+          "entity value is shared,\n'has no neighbours' is a perfect label proxy and the "
+          "recall above measures the\ngenerator, not the detector. This sweep does not "
+          "locate the model's failure\nboundary; it shows why this simulator cannot.")
+    return df
+
+
 def latency() -> pd.DataFrame:
     train = _train_set(0)
     calib = _calibration_set(2)
@@ -1663,6 +1736,6 @@ if __name__ == "__main__":
      "relations": relations, "aperture": aperture,
      "architecture": architecture, "online": online,
      "resilience": resilience, "ceiling": ceiling,
-     "feature_parity": feature_parity,
+     "feature_parity": feature_parity, "saturation": saturation,
      "sharding": sharding, "select": select,
      "replicate": replicate, "capacity": capacity}[cmd]()

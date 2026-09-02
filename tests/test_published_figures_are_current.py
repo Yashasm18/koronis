@@ -48,6 +48,10 @@ DERIVED = {
     ("docs/evaluation.md", "0.0020"): (
         "median event-model ECE over the 10 seeds in seeds_raw.csv; ECE is not "
         "carried into seeds_summary.csv"),
+    ("README.md", "1,760"): "false-positive cost: 44 x COST_PER_FALSE_BLOCK_INR",
+    ("README.md", "1,600"): "false-positive cost: 40 x COST_PER_FALSE_BLOCK_INR",
+    ("README.md", "19,040"): "false-positive cost: 476 x COST_PER_FALSE_BLOCK_INR",
+    ("README.md", "400"): "false-positive cost: 10 x COST_PER_FALSE_BLOCK_INR",
     ("docs/evaluation.md", "0.0090"): (
         "the gap between the two rows of feature_parity.csv - a difference, so "
         "it appears in no artifact by itself"),
@@ -68,10 +72,26 @@ def _check_derived():
     gap = (parity["as_shipped_gmail_yahoo_outlook"]
            - parity["matched_to_detector_gmail_outlook"])
 
-    return {
+    # The false-positive cost column is count x the declared per-block cost, on
+    # the counts as the table rounds them. Recomputed so the column cannot drift
+    # from either the medians or the constant.
+    from koronis.eval.cost import COST_PER_FALSE_BLOCK_INR
+
+    seeds = {r["detector"]: r
+             for r in csv.DictReader((ROOT / "results" / "seeds_summary.csv").open())}
+    def fp_cost(detector):
+        fp = round(float(seeds[detector]["false_positives_median"]))
+        return f"{fp * COST_PER_FALSE_BLOCK_INR:,.0f}"
+
+    out = {
         ("docs/evaluation.md", "0.0020"): f"{ece:.4f}" == "0.0020",
         ("docs/evaluation.md", "0.0090"): f"{gap:.4f}" == "0.0090",
+        ("README.md", "1,760"): fp_cost("velocity_tuned") == "1,760",
+        ("README.md", "1,600"): fp_cost("shared_entity") == "1,600",
+        ("README.md", "19,040"): fp_cost("gbdt_per_txn") == "19,040",
+        ("README.md", "400"): fp_cost("koronis_graph") == "400",
     }
+    return out
 
 
 PATTERNS = [
@@ -160,11 +180,24 @@ def test_every_published_figure_still_exists_in_results(doc):
 
 
 def test_the_derived_figures_still_compute_to_what_is_published():
-    """An allowlist entry that is never recomputed is just a suppression."""
+    """An allowlist entry that is never recomputed is just a suppression.
+
+    Two assertions, and the second is the one that matters. Recomputing alone
+    only proves the arithmetic still gives the same answer - it says nothing
+    about what the document actually prints. Changing a published cost from
+    19,040 to 19,400 passed every other check in this file, because 19400
+    happens to collide with a value somewhere in results/. Requiring the
+    computed figure to appear in the document closes that: for a derived number,
+    membership in a global value set is not evidence of anything.
+    """
     for key, holds in _check_derived().items():
+        doc, token = key
         assert holds, (
-            f"{key[1]!r} in {key[0]} no longer recomputes to the published value; "
+            f"{token!r} in {doc} no longer recomputes to the published value; "
             f"it was allowed on the grounds that {DERIVED[key]}")
+        assert token in (ROOT / doc).read_text(), (
+            f"{token!r} is the computed value but {doc} no longer prints it - "
+            "the figure was edited away from its own arithmetic")
 
 
 def test_the_historical_allowlist_has_not_gone_stale():

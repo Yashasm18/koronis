@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+from sklearn.metrics import average_precision_score
 
 from ..data.background import load_background
 from ..data.campaigns import inject
@@ -90,12 +91,19 @@ def sweep(n_values: list[int], k_values: list[int], fp_budget: float,
             kor = model.score_events(ev)          # frozen model, unseen stream
 
             boundary = predicted_boundary_k(n, tau_binding)
+            # "Did anything fire" is the right criterion for comparing against
+            # a counter, which either trips or does not. It is far too weak to
+            # locate the graph model's OWN failure boundary: one event above
+            # threshold out of n counts as detection. Recall and PR-AUC are
+            # carried alongside so saturation can be read off a graded curve.
             rows.append({
                 "n": n,
                 "k": k,
                 "velocity_detected": bool(vel[y].max() > 0),
                 # Same criterion as velocity: did any campaign event fire?
                 "koronis_detected": bool((kor[y] >= thr).any()),
+                "koronis_recall": round(float((kor[y] >= thr).mean()), 4),
+                "koronis_pr_auc": round(float(average_precision_score(y, kor)), 4),
                 "predicted_k_boundary": boundary,
                 "velocity_blind_predicted": bool(k >= boundary),
                 "tau_binding": tau_binding,

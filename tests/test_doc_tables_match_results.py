@@ -123,6 +123,17 @@ def ceiling_rows():
             int(r["params"]), _f(r, "pr_auc", 4)))
 
 
+def saturation_rows():
+    """Only the four rows the doc publishes: the two spreads either side of k = n."""
+    for r in _rows("saturation.csv"):
+        if r["k_over_n"] not in ("0.5", "1.0"):
+            continue
+        yield ("| {} | {} | {} | {} | {} | {} | {} |".format(
+            r["n"], r["k"], r["k_over_n"], _f(r, "koronis_recall", 1),
+            _f(r, "campaign_isolated", 1), _f(r, "background_isolated", 4),
+            _i(r, "entity_values_shared_with_background")))
+
+
 def policy_rows():
     labels = {"always_allow": "always allow", "always_hold": "always hold",
               "event_thresholding": "event-by-event thresholding",
@@ -145,6 +156,7 @@ TABLES = {
     "response policy": policy_rows,
     "failure behaviour": resilience_rows,
     "per-event ceiling": ceiling_rows,
+    "saturation": saturation_rows,
 }
 
 
