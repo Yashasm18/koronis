@@ -507,6 +507,23 @@ Every defect below was surfaced by running experiments, not by reading code.
    the same rule the stream applies to events it cannot score — refuse loudly and count it,
    never absorb it.
 
+31. **Every experiment ran; the front door did not.** Dispatch in `cli.py` was a bare dict
+   lookup on `sys.argv[1]`, so `python -m koronis.cli --help` and any mistyped experiment
+   name exited on a raw `KeyError` traceback. Nothing was wrong with the experiments — the
+   failure was at the one place a reader who has just cloned the repository arrives first,
+   and it answered them with a stack trace.
+
+   It survived 265 tests because every test imported the experiment functions directly and
+   none of them ever went through `__main__`. It was found by running the CLI in a **fresh
+   clone**, which is the only way a stranger will ever meet it: `--help` is the first thing
+   anyone types at an unfamiliar tool, and it was the one input guaranteed to fail.
+
+   `--help` now prints the experiment list and exits 0; an unknown name is reported by name
+   with the same list on stderr and exits 2. The test that would have caught it drives the
+   entry point as a subprocess rather than importing it, and a third assertion checks that
+   every command the docs tell a reader to run is actually dispatchable — the copy-pasteable
+   lines in the README were the other thing nothing was guarding.
+
 An inference benchmark reporting p50 1.78 ms was also discarded: it was measured while a
 training job ran on the same machine. The idle run is 0.91 ms.
 

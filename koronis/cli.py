@@ -1829,14 +1829,37 @@ def benchmark(n_warmup: int = 200) -> dict:
 
 
 if __name__ == "__main__":
+    # Dispatch by name. A dict lookup used to be the whole of this, which meant
+    # `--help` and a mistyped command both exited on a raw KeyError traceback --
+    # the first thing anyone types at an unfamiliar CLI, answered with a stack
+    # trace. The experiments are the interface, so the list of them is the help.
+    EXPERIMENTS = {
+        "ablation": ablation, "frontier": frontier, "latency": latency,
+        "seeds": seeds, "replay": replay, "benchmark": benchmark,
+        "mechanism": mechanism, "incidents": incidents, "drift": drift,
+        "relations": relations, "aperture": aperture,
+        "architecture": architecture, "online": online,
+        "resilience": resilience, "ceiling": ceiling,
+        "feature_parity": feature_parity, "saturation": saturation,
+        "bin_concentration": bin_concentration,
+        "sharding": sharding, "select": select,
+        "replicate": replicate, "capacity": capacity}
+
+    def usage(stream=sys.stdout):
+        print("usage:  python -m koronis.cli [experiment]\n", file=stream)
+        print("Runs one experiment and writes its artifacts to results/.", file=stream)
+        print("With no argument, runs `ablation`.\n", file=stream)
+        print("experiments:", file=stream)
+        names = sorted(EXPERIMENTS)
+        for i in range(0, len(names), 3):
+            print("  " + "".join(n.ljust(20) for n in names[i:i + 3]).rstrip(), file=stream)
+
     cmd = sys.argv[1] if len(sys.argv) > 1 else "ablation"
-    {"ablation": ablation, "frontier": frontier, "latency": latency,
-     "seeds": seeds, "replay": replay, "benchmark": benchmark,
-     "mechanism": mechanism, "incidents": incidents, "drift": drift,
-     "relations": relations, "aperture": aperture,
-     "architecture": architecture, "online": online,
-     "resilience": resilience, "ceiling": ceiling,
-     "feature_parity": feature_parity, "saturation": saturation,
-     "bin_concentration": bin_concentration,
-     "sharding": sharding, "select": select,
-     "replicate": replicate, "capacity": capacity}[cmd]()
+    if cmd in ("-h", "--help", "help"):
+        usage()
+        raise SystemExit(0)
+    if cmd not in EXPERIMENTS:
+        print(f"unknown experiment: {cmd!r}\n", file=sys.stderr)
+        usage(sys.stderr)
+        raise SystemExit(2)
+    EXPERIMENTS[cmd]()
