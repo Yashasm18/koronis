@@ -1204,10 +1204,12 @@ def incidents() -> pd.DataFrame:
           f"(target {fc.upper_q:.0%})   median abs error "
           f"{fcast['median_abs_err_p50']:.1f} attempts   "
           f"mean true remaining {fcast['mean_true_remaining']:.1f}")
-    reg = summary["regret_vs_oracle_inr"].iloc[0]
-    match = summary["actions_matching_oracle"].iloc[0]
-    print(f"\naction regret vs oracle: INR {reg:,.0f}  "
-          f"({match}/{len(detail)} incidents get the same action)")
+    # Select the causal row explicitly. These columns are per policy now, so
+    # row 0 is always_allow's regret, not the one being reported.
+    causal = summary[summary["policy"] == "causal_policy"].iloc[0]
+    print(f"\naction regret vs oracle: INR {causal['regret_vs_oracle_inr']:,.0f}  "
+          f"({causal['actions_matching_oracle']}/{len(detail)} incidents get the "
+          "same action)")
     return summary
 
 

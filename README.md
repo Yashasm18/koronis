@@ -3,7 +3,7 @@
 > Detection of distributed card-testing campaigns that per-entity velocity rules cannot see at any threshold.
 
 [![CI](https://github.com/Yashasm18/koronis/actions/workflows/ci.yml/badge.svg)](https://github.com/Yashasm18/koronis/actions/workflows/ci.yml)
-[![tests](https://img.shields.io/badge/tests-258%20passing-2ea44f)](tests/)
+[![tests](https://img.shields.io/badge/tests-259%20passing-2ea44f)](tests/)
 [![python](https://img.shields.io/badge/python-3.14-3776ab)](https://www.python.org/)
 [![license: MIT](https://img.shields.io/badge/license-MIT-yellow)](LICENSE)
 [![graph libs](https://img.shields.io/badge/graph%20libraries-none-8a3ffc)](koronis/models/layers.py)
@@ -55,12 +55,12 @@ python -m venv .venv
 .venv/bin/pip install -r requirements.txt -r requirements-dev.txt
 .venv/bin/python -m playwright install chromium   # the site tests drive the demo page
 .venv/bin/python site/build.py                    # they need docs/index.html to exist
-.venv/bin/python -m pytest tests/ -q              # 258 tests, ~2 min
+.venv/bin/python -m pytest tests/ -q              # 259 tests, ~2 min
 .venv/bin/python -m koronis.cli ablation          # reproduces the headline table below
 ```
 
 The suite runs without `requirements-dev.txt` — the nine tests that drive the demo page
-skip — but then 249 are collected rather than 258, and the test-count check says so.
+skip — but then 250 are collected rather than 259, and the test-count check says so.
 
 ## Key results
 
@@ -341,7 +341,7 @@ python site/build.py                            # results/ -> docs/index.html
 | Is the *whole* pipeline causal? | yes — consolidation too, via a sliding count-min sketch in fixed memory | [Evaluation](docs/evaluation.md#making-consolidation-causal) |
 | Does it survive being split across machines? | measured — and PR-AUC and rupees disagree about which routing is better | [Evaluation](docs/evaluation.md#does-the-graph-survive-being-split-across-machines) |
 | Can the loss be recovered? | yes — replication restores recall 0.65 → 0.99 at sixteen shards, and costs less than not replicating at every shard count | [Evaluation](docs/evaluation.md#recovering-the-edges-a-partition-deletes) |
-| What broke? | 28 defects, and **11 published claims withdrawn** | [Engineering log](docs/engineering-log.md#claims-withdrawn) |
+| What broke? | 29 defects, and **11 published claims withdrawn** | [Engineering log](docs/engineering-log.md#claims-withdrawn) |
 
 ## Limitations
 

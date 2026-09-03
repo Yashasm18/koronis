@@ -137,6 +137,7 @@ def evaluate_policies(events: pd.DataFrame, scores: np.ndarray, threshold: float
             cost += analyst * ANALYST_COST_PER_MIN_INR
         rows.append({
             "policy": name,
+            "_actions": list(actions),
             "incidents_actioned": sent,
             "false_incidents": false_inc,
             "campaign_attempts_stopped": int(round(stopped)),
@@ -154,11 +155,25 @@ def evaluate_policies(events: pd.DataFrame, scores: np.ndarray, threshold: float
     summarise("oracle_policy", [d["oracle_action"] for d in detail])
 
     df = pd.DataFrame(rows)
-    cost = dict(zip(df["policy"], df["merchant_cost_inr"]))
-    df["regret_vs_oracle_inr"] = round(
-        cost.get("causal_policy", 0.0) - cost.get("oracle_policy", 0.0), 2)
-    df["actions_matching_oracle"] = sum(
-        1 for d in detail if d["action"] == d["oracle_action"])
+
+    # Per policy, not broadcast. These two used to be computed once from the
+    # causal policy and written to every row, so oracle_policy carried a regret
+    # against itself - nonsense to anyone who opened the artifact, even though
+    # every published figure selected the causal row correctly. Both quantities
+    # are well defined for each policy: regret is its own cost above the oracle's
+    # (zero for the oracle), and the match count is how often it chose what the
+    # oracle chose.
+    oracle_cost = dict(zip(df["policy"], df["merchant_cost_inr"])).get("oracle_policy", 0.0)
+    oracle_actions = [d["oracle_action"] for d in detail]
+    df["regret_vs_oracle_inr"] = [round(c - oracle_cost, 2)
+                                  for c in df["merchant_cost_inr"]]
+    df["actions_matching_oracle"] = [
+        sum(1 for a, o in zip(acts, oracle_actions) if a == o) for acts in df["_actions"]
+    ]
+    df = df.drop(columns=["_actions"])
+
+    # Stream-level facts, identical for every policy by construction: they
+    # describe the traffic, not the decision.
     df["exposure_if_unstopped_inr"] = round(total_exposure, 2)
     df["events_alerted"] = n_events_fired
     df["incidents_formed"] = len(incidents)

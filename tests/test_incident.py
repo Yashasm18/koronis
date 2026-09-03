@@ -299,3 +299,36 @@ def test_the_policy_applies_p_genuine_exactly_once():
         "published option costs apply P(genuine) twice - the forecast is being "
         "scaled by risk before expected_cost scales by it again:\n  "
         + "\n  ".join(wrong))
+
+
+def test_the_oracle_has_no_regret_against_itself():
+    """`regret_vs_oracle_inr` and `actions_matching_oracle` are per policy.
+
+    They used to be computed once from the causal policy and broadcast to every
+    row with `df[col] = scalar`, so results/policy.csv told anyone who opened it
+    that the oracle carried Rs4,750 of regret against itself and matched its own
+    actions on 1 of 7 incidents. Nothing published was wrong - every consumer
+    selected the causal figure - but the artifact was not readable on its own
+    terms, and an artifact nobody can read is not evidence.
+
+    The oracle is the fixed point: zero regret, and it agrees with itself
+    everywhere. Any broadcast breaks both halves at once.
+    """
+    import csv
+
+    rows = {r["policy"]: r
+            for r in csv.DictReader((ROOT / "results" / "policy.csv").open())}
+    oracle, causal = rows["oracle_policy"], rows["causal_policy"]
+    n_incidents = int(causal["incidents_formed"])
+
+    assert float(oracle["regret_vs_oracle_inr"]) == 0.0, (
+        "the oracle is carrying regret against itself, so this column is a "
+        "broadcast of some other policy's figure")
+    assert int(oracle["actions_matching_oracle"]) == n_incidents, (
+        "the oracle does not match its own actions on every incident")
+
+    # And the column must actually vary, or a broadcast of zeros would pass.
+    regrets = {p: float(r["regret_vs_oracle_inr"]) for p, r in rows.items()}
+    assert len(set(regrets.values())) > 1, f"every policy has the same regret: {regrets}"
+    assert regrets["always_hold"] > regrets["causal_policy"] > 0, (
+        f"regret is not ordered as the costs are: {regrets}")

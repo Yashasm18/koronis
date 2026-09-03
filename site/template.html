@@ -594,6 +594,8 @@ table(el("t-mech"), [
 el("mech-hint").textContent = D.mech[0].n_trials + " trials · medians";
 
 var POL = D.policy;
+var CAUSAL = POL.summary.filter(function(r){return r.policy==="causal_policy";})[0]
+              || POL.summary[0];
 var PRIME = POL.detail.reduce(function(a,b){return b.n_attempts>a.n_attempts?b:a;}, POL.detail[0]);
 var ACTION_LABEL = {monitor:"Monitor", rate_limit:"Rate-limit",
   step_up:"Step-up verification", hold_review:"Hold + analyst review"};
@@ -665,8 +667,10 @@ table(el("t-fc"), [
      (FC.target_coverage*100).toFixed(0)+"%)"},
   {k:"median abs error (P50)", v:FC.median_abs_err_p50+" attempts"},
   {k:"mean true remaining", v:FC.mean_true_remaining+" attempts"},
-  {k:"action regret vs oracle", v:"₹"+num(Math.round(POL.summary[0].regret_vs_oracle_inr))},
-  {k:"actions matching oracle", v:POL.summary[0].actions_matching_oracle+" / "+POL.detail.length},
+  /* Per policy since the artifact stopped broadcasting one policy's figure to
+     every row: pick the causal one by name rather than by position. */
+  {k:"action regret vs oracle", v:"₹"+num(Math.round(CAUSAL.regret_vs_oracle_inr))},
+  {k:"actions matching oracle", v:CAUSAL.actions_matching_oracle+" / "+POL.detail.length},
 ]);
 el("fc-hint").textContent = POL.n_calibration_snapshots+" calibration snapshots · "+
   FC.n_snapshots+" held-out";

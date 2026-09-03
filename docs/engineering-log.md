@@ -465,6 +465,28 @@ Every defect below was surfaced by running experiments, not by reading code.
    scoped — and became false when the qualifier was dropped on the way into the README. The
    conclusion is unaffected: 0.3279 is still nowhere near the graph model's 0.9915.
 
+29. **An artifact that was not readable on its own terms.** `results/policy.csv` carried
+   `regret_vs_oracle_inr` and `actions_matching_oracle` as columns, both computed once from
+   the causal policy and written to every row with `df[col] = scalar`. So the file told
+   anyone who opened it that **oracle_policy had ₹4,750 of regret against itself** and agreed
+   with its own decisions on 1 of 7 incidents.
+
+   Nothing published was wrong: every consumer — `cli.py`, the demo site, the docs — selected
+   the causal figure, by `.iloc[0]` or `summary[0]`, which happened to be right only because
+   the value was identical in every row. But a judge who opens the CSV is reading the
+   evidence, and evidence that contradicts itself is not evidence, however correct the
+   summary above it.
+
+   Both quantities are well defined per policy, so they are computed that way now: regret is
+   each policy's own cost above the oracle's — ₹27,245 for always-allow down to **0 for the
+   oracle** — and the match count is how often each agreed with it. The column became
+   informative instead of merely non-contradictory. Consumers select the causal row by name
+   rather than by position, because position was never what they meant.
+
+   The test asserts the oracle is the fixed point — zero regret, agrees with itself
+   everywhere — and that the column varies at all, since a broadcast of zeros would satisfy
+   the first half. Reverted, it fails on the first assertion.
+
 An inference benchmark reporting p50 1.78 ms was also discarded: it was measured while a
 training job ran on the same machine. The idle run is 0.91 ms.
 
