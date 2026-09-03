@@ -341,7 +341,7 @@ python site/build.py                            # results/ -> docs/index.html
 | Is the *whole* pipeline causal? | yes — consolidation too, via a sliding count-min sketch in fixed memory | [Evaluation](docs/evaluation.md#making-consolidation-causal) |
 | Does it survive being split across machines? | measured — and PR-AUC and rupees disagree about which routing is better | [Evaluation](docs/evaluation.md#does-the-graph-survive-being-split-across-machines) |
 | Can the loss be recovered? | yes — replication restores recall 0.65 → 0.99 at sixteen shards, and costs less than not replicating at every shard count | [Evaluation](docs/evaluation.md#recovering-the-edges-a-partition-deletes) |
-| What broke? | 31 defects, and **11 published claims withdrawn** | [Engineering log](docs/engineering-log.md#claims-withdrawn) |
+| What broke? | 32 defects, and **11 published claims withdrawn** | [Engineering log](docs/engineering-log.md#claims-withdrawn) |
 
 ## Limitations
 

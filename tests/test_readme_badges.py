@@ -5,45 +5,74 @@ moment a test is added. This project's whole discipline is that a property you
 assert gets checked and a property you merely intend gets violated, so the
 badge is asserted here rather than trusted.
 """
+import importlib.util
 import re
 import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 README = (ROOT / "README.md").read_text()
 
 
-def _collected_test_count() -> tuple[int, str]:
-    """Ask pytest itself, in a subprocess, so this cannot count itself wrong.
+def _missing_optional_test_deps() -> list[str]:
+    """Which requirements-dev.txt packages are absent from this interpreter.
 
-    Also reports anything skipped at COLLECTION time. A module guarded by
-    `importorskip` contributes no tests when its dependency is absent, so the
-    count legitimately differs between a machine with the optional test
-    dependencies and one without - which is exactly how this check once failed
-    in CI while passing locally. requirements-dev.txt exists to keep the two
-    environments the same; the note below says so when they diverge.
+    The badge counts the whole suite, and the whole suite exists only when the
+    optional test dependencies are installed: a module guarded by
+    `importorskip` contributes no tests without them.
+
+    This asks the interpreter directly rather than reading pytest's summary.
+    The previous version parsed `--collect-only` output for a "skipped" count,
+    which that mode never prints -- so the branch it guarded could not fire, and
+    a clean checkout got a failed badge check instead of the explanation the
+    docstring promised. Distribution name and import name coincide for every
+    entry here; a future one where they differ needs a mapping, and will show up
+    as a permanent skip rather than silently passing.
     """
+    req = ROOT / "requirements-dev.txt"
+    names = [re.split(r"[=<>!~\[]", ln, maxsplit=1)[0].strip()
+             for ln in req.read_text().splitlines()
+             if ln.strip() and not ln.lstrip().startswith("#")]
+    assert names, "requirements-dev.txt lists no packages"
+    return [n for n in names if importlib.util.find_spec(n) is None]
+
+
+def _collected_test_count() -> int:
+    """Ask pytest itself, in a subprocess, so this cannot count itself wrong."""
     out = subprocess.run(
         [sys.executable, "-m", "pytest", "tests/", "-q", "--collect-only"],
         cwd=ROOT, capture_output=True, text=True).stdout
     m = re.search(r"(\d+) tests? collected", out)
     assert m, f"could not read a collection count from pytest:\n{out[-500:]}"
-    skipped = re.search(r"(\d+) skipped", out)
-    note = ""
-    if skipped:
-        note = (f" ({skipped.group(1)} module(s) skipped at collection - install "
-                f"requirements-dev.txt so optional tests are collected)")
-    return int(m.group(1)), note
+    return int(m.group(1))
 
 
 def test_tests_badge_matches_the_suite():
+    """The badge counts the whole suite, so only a whole suite can check it.
+
+    Without the optional test dependencies the `importorskip` modules are never
+    collected and the count is legitimately lower. Failing here would hand
+    anyone who cloned the repository and installed only requirements.txt a red
+    suite for a badge that is perfectly correct -- a false alarm at exactly the
+    moment a stranger forms their first impression. So that case skips, and CI,
+    which installs requirements-dev.txt, is where a stale badge is caught. A
+    guard that cries wolf on a clean checkout teaches people to ignore it, which
+    costs more than the badge is worth.
+    """
     m = re.search(r"badge/tests-(\d+)%20passing", README)
     assert m, "the tests badge is missing from the README"
     claimed = int(m.group(1))
-    actual, note = _collected_test_count()
+    missing = _missing_optional_test_deps()
+    if missing:
+        pytest.skip(f"{', '.join(missing)} not installed, so part of the suite is "
+                    f"not collected here; the badge claims {claimed} and is "
+                    f"checked in CI, which installs requirements-dev.txt")
+    actual = _collected_test_count()
     assert claimed == actual, (
-        f"README badge claims {claimed} tests, pytest collects {actual}{note}. "
+        f"README badge claims {claimed} tests, pytest collects {actual}. "
         f"Update the badge in README.md.")
 
 

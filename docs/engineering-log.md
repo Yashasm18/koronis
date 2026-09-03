@@ -524,6 +524,28 @@ Every defect below was surfaced by running experiments, not by reading code.
    every command the docs tell a reader to run is actually dispatchable — the copy-pasteable
    lines in the README were the other thing nothing was guarding.
 
+32. **A clean checkout failed its own test suite, and the branch written to prevent that
+   could never run.** Installing only `requirements.txt` leaves `playwright` absent, so the
+   `importorskip` module contributes no tests and the suite collects 259 rather than 268.
+   The badge guard read that as a stale badge and failed. Nothing was wrong: the badge was
+   correct, the code was correct, and the only casualty was the first impression of anyone
+   who cloned the repository and ran the tests — which is most of the people this repository
+   is written for.
+
+   The guard already had a branch for exactly this. It parsed `pytest --collect-only` output
+   for a "skipped" count, and **that mode never prints one** — so the branch could not fire,
+   and the docstring above it described a behaviour the code did not have. It survived
+   because the only environment where it mattered is the one nobody ran: every machine here
+   and in CI has the optional dependencies installed. The same shape as defect 30 — a
+   fallback that cannot fire is indistinguishable from a fallback that was never needed.
+
+   It now asks the interpreter whether each package named in `requirements-dev.txt` imports,
+   rather than parsing a summary line for a word that was never there, and skips with the
+   reason when one does not. Checked in all three directions, because a guard that always
+   skips is worse than no guard: it fails on a falsified badge with the dependencies present,
+   passes with a correct one, and skips without them. CI installs them, so a genuinely stale
+   badge is still caught where it counts.
+
 An inference benchmark reporting p50 1.78 ms was also discarded: it was measured while a
 training job ran on the same machine. The idle run is 0.91 ms.
 
