@@ -85,8 +85,15 @@ def evaluate_policies(events: pd.DataFrame, scores: np.ndarray, threshold: float
         m = min(DECIDE_AFTER, len(inc.rows))
         p50, hi = (forecaster.predict_one(events, inc.rows, scores, m)
                    if forecaster is not None else (0.0, 0.0))
-        # "Will there be more" times "does it matter".
-        exp_remaining = int(round(inc.risk * p50))
+        # The forecast is the remaining count IF this is a campaign, which is
+        # what the oracle branch above also passes. "Does it matter" is applied
+        # once, inside expected_cost, as `risk * exposure`. This line used to
+        # multiply by risk as well - "will there be more" TIMES "does it
+        # matter" - which made the causal arm risk^2 * p50 while the oracle arm
+        # stayed risk * true_remaining, so the two sides of the published regret
+        # were not computed the same way. It also contradicted the formula
+        # stated in forecast.py and in docs/evaluation.md.
+        exp_remaining = int(round(p50))
         causal_action, causal_costs = choose_action(inc.risk, exp_remaining)
         uncertain = hi > max(p50, 1.0) * UNCERTAINTY_RATIO
         if uncertain and inc.risk > 0.5 and causal_action.name == "monitor":

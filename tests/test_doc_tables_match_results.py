@@ -20,6 +20,7 @@ verbatim. A re-run that moves any cell fails, and the failure names the row.
 """
 import csv
 import pathlib
+import re
 
 import pytest
 
@@ -151,6 +152,38 @@ def bin_detection_rows():
             _count(r, "false_positives")))
 
 
+def dossier_figures():
+    """The audit dossier printed in the docs must be what the function prints.
+
+    It is generated output presented as generated output, so it is guarded like
+    a table rather than left to the figure scanner - which strips fenced blocks
+    for commands and could only ever match the rupee amounts anyway, not the
+    bare attempt counts. Defect 27: six superseded figures sat in that block,
+    and the site rendered different ones from the same artifact at runtime.
+    """
+    import json
+
+    from koronis.incident import dossier
+
+    detail = json.loads((ROOT / "results" / "policy.json").read_text())["detail"]
+    text = dossier(max(detail, key=lambda r: r["n_attempts"]))
+    for line in text.splitlines():
+        for token in re.findall(r"\b\d[\d,]*\b", line):
+            if len(token.replace(",", "")) >= 3:      # skip 12, 60, 6.6 etc
+                yield token
+
+
+def drift_trade_rows():
+    """The guardrail's trade-off table. It was published with three of four
+    profiles and pre-defect-26 counts, because nothing re-derived it."""
+    for r in _rows("drift.csv"):
+        if r["profile"] == "base":
+            continue
+        yield ("| `{}` | {} | {} | {} |".format(
+            r["profile"], _i(r, "false_avoided"), _i(r, "true_downgraded"),
+            _i(r, "minutes_added")))
+
+
 def policy_rows():
     labels = {"always_allow": "always allow", "always_hold": "always hold",
               "event_thresholding": "event-by-event thresholding",
@@ -176,6 +209,8 @@ TABLES = {
     "saturation": saturation_rows,
     "BIN concentration, false alarms": bin_concentration_rows,
     "BIN concentration, detection": bin_detection_rows,
+    "audit dossier": dossier_figures,
+    "drift guardrail trade": drift_trade_rows,
 }
 
 

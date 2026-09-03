@@ -3,7 +3,7 @@
 > Detection of distributed card-testing campaigns that per-entity velocity rules cannot see at any threshold.
 
 [![CI](https://github.com/Yashasm18/koronis/actions/workflows/ci.yml/badge.svg)](https://github.com/Yashasm18/koronis/actions/workflows/ci.yml)
-[![tests](https://img.shields.io/badge/tests-255%20passing-2ea44f)](tests/)
+[![tests](https://img.shields.io/badge/tests-258%20passing-2ea44f)](tests/)
 [![python](https://img.shields.io/badge/python-3.14-3776ab)](https://www.python.org/)
 [![license: MIT](https://img.shields.io/badge/license-MIT-yellow)](LICENSE)
 [![graph libs](https://img.shields.io/badge/graph%20libraries-none-8a3ffc)](koronis/models/layers.py)
@@ -55,12 +55,12 @@ python -m venv .venv
 .venv/bin/pip install -r requirements.txt -r requirements-dev.txt
 .venv/bin/python -m playwright install chromium   # the site tests drive the demo page
 .venv/bin/python site/build.py                    # they need docs/index.html to exist
-.venv/bin/python -m pytest tests/ -q              # 255 tests, ~2 min
+.venv/bin/python -m pytest tests/ -q              # 258 tests, ~2 min
 .venv/bin/python -m koronis.cli ablation          # reproduces the headline table below
 ```
 
 The suite runs without `requirements-dev.txt` — the nine tests that drive the demo page
-skip — but then 246 are collected rather than 255, and the test-count check says so.
+skip — but then 249 are collected rather than 258, and the test-count check says so.
 
 ## Key results
 
@@ -72,25 +72,34 @@ its price:
 consolidates them and picks the intervention with the lowest expected rupee cost:
 
 ```
-402 event alerts  ->  7 incidents  ->  2 actions recommended
+402 event alerts  ->  7 incidents  ->  7 actions recommended
 ```
 
-One test stream, end to end. One of those two actions was wrong — a two-attempt incident
-rate-limited when the oracle would have left it alone — and it is the *only* decision in
-that stream the oracle would have made differently, so it accounts for the whole of that
-stream's ₹520 regret. The policy sees only an incident's first 12 events plus a forecast,
-never the true remaining count. The costs below are medians across all 8 test streams:
+One test stream, end to end. The policy sees only an incident's first 12 events plus a
+forecast, never the true remaining count. The costs below are medians across all 8 test
+streams:
 
-| policy | analyst minutes | merchant cost |
-|---|---:|---:|
-| always hold | 126.0 | ₹50,307 |
-| event-by-event thresholding | 211.0 | ₹6,602 |
-| **causal policy** *(forecast only)* | **12.0** | **₹3,405** |
-| oracle *(upper bound, knows the future)* | 12.0 | ₹3,145 |
+| policy | incidents actioned | false incidents | analyst minutes | merchant cost |
+|---|---:|---:|---:|---:|
+| always allow | 0.0 | 0.0 | 0.0 | ₹53,144 |
+| always hold | 10.5 | 6.0 | 126.0 | ₹50,307 |
+| event-by-event thresholding | 10.5 | 6.0 | 211.0 | ₹12,356 |
+| **causal policy** *(forecast only)* | 10.5 | 6.0 | **12.0** | **₹9,282** |
+| oracle *(upper bound, knows the future)* | 1.0 | 0.0 | 12.0 | ₹3,145 |
 
-Event thresholding reaches the same decision and hands an analyst **eighteen times the
-triage**. Consolidation, not detection, is the difference. Not knowing the future still
-costs — ₹3,405 against the oracle's ₹3,145.
+**Consolidation is what the funnel buys, and it survives intact:** event thresholding
+reaches the same actions and hands an analyst **eighteen times the triage** — 211 minutes
+against 12. That is the claim this section exists to make, and it does not depend on the
+cost model at all.
+
+**Not knowing the future costs a great deal more than this repo used to report.** ₹9,282
+against the oracle's ₹3,145, and **1 of 7** actions matching it. Until
+[defect 26](docs/engineering-log.md) those figures read ₹3,405 and 6 of 7, because the
+policy multiplied the forecast by `P(genuine)` and then `expected_cost` multiplied by it
+again. The arithmetic error was quietly compensating for a forecaster that over-predicts on
+low-risk incidents — it predicts ~470 remaining attempts for one-event incidents — so
+removing it made the honest number three times worse.
+[What that cost, in full](docs/evaluation.md#policy-comparison).
 
 The detection work below is the evidence that the thing making those decisions is sound.
 
@@ -251,10 +260,11 @@ rate and 19,792 at 10%**, to devices that do not exist. Full table:
 [Failure behaviour](docs/evaluation.md#failure-behaviour).
 
 **Is the gap a modelling gap?** No — it is an information gap, and that was tested rather
-than argued. Scaling a per-transaction learner does not close it: the best per-event result
-in a capacity sweep across two model families is the *smallest* GBDT (1,550 parameters,
-PR-AUC 0.2891), and adding capacity makes it worse, down to 0.2233 at 1,020,000. The graph
-model reaches **0.9915 with 9,171 parameters**.
+than argued. Scaling a per-transaction learner does not close it: across a capacity sweep
+over two model families the best per-event result of any size is **0.3279**, and the
+gradient-boosted family gets *worse* as it grows — its best is its **smallest** model
+(1,550 parameters, PR-AUC 0.2891), falling to 0.2233 at 1,020,000. The graph model reaches
+**0.9915 with 9,171 parameters**.
 [The per-event ceiling](docs/evaluation.md#the-per-event-ceiling) ·
 [why there is no language model in here](docs/ai-decisions.md).
 
@@ -331,7 +341,7 @@ python site/build.py                            # results/ -> docs/index.html
 | Is the *whole* pipeline causal? | yes — consolidation too, via a sliding count-min sketch in fixed memory | [Evaluation](docs/evaluation.md#making-consolidation-causal) |
 | Does it survive being split across machines? | measured — and PR-AUC and rupees disagree about which routing is better | [Evaluation](docs/evaluation.md#does-the-graph-survive-being-split-across-machines) |
 | Can the loss be recovered? | yes — replication restores recall 0.65 → 0.99 at sixteen shards, and costs less than not replicating at every shard count | [Evaluation](docs/evaluation.md#recovering-the-edges-a-partition-deletes) |
-| What broke? | 25 defects, and **9 published claims withdrawn** | [Engineering log](docs/engineering-log.md#claims-withdrawn) |
+| What broke? | 28 defects, and **11 published claims withdrawn** | [Engineering log](docs/engineering-log.md#claims-withdrawn) |
 
 ## Limitations
 

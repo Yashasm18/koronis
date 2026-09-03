@@ -407,6 +407,64 @@ Every defect below was surfaced by running experiments, not by reading code.
    during the replay first, because a test comparing two identical empty states would pass
    against any implementation. Reverted, it names all eight.
 
+26. **The policy applied P(genuine) twice, and the error was flattering the headline.**
+   `forecast.py` and `docs/evaluation.md` both state the formula: *expected remaining
+   exposure = P(genuine) × forecast(remaining attempts) × cost*. `expected_cost` implements
+   it as `risk * exposure`. But `policy.py` passed `int(round(inc.risk * p50))` as the
+   remaining count, so the causal arm computed **risk² × p50** while the oracle arm passed
+   an unconditional count and got `risk × true_remaining`. The two sides of a published
+   regret, computed by different formulas.
+
+   It changed the chosen action on **6 of 7** incidents. Correcting it moved the published
+   numbers the wrong way, which is the point of recording it: action regret **₹520 → ₹4,750**,
+   actions matching the oracle **6 of 7 → 1 of 7**, causal policy cost across eight streams
+   **₹3,405 → ₹9,282**.
+
+   The reason the error looked good is worth more than the error. The forecaster
+   over-predicts badly on low-risk incidents — it returns ~470 remaining attempts for
+   one-event incidents — and multiplying by risk a second time damped exactly that
+   over-prediction. Two mistakes cancelling produced a better-looking number than either
+   component deserved. Removing one exposed the other, which was always there.
+
+   **What survives:** the ranking is unchanged — causal beats event thresholding beats
+   always-hold beats always-allow — and the consolidation claim, 12 analyst minutes against
+   211, does not touch the cost model at all. **What does not:** "close to the oracle". It is
+   now three times the oracle's cost, and that is the honest number.
+
+   No test could see it. The oracle-comparison fixture drives the policy with `_OracleRisk`,
+   which returns `campaign_share` = 1.0, and risk² == risk at 1.0 — a fixture that made the
+   only test of this path structurally blind to it.
+   `test_the_policy_applies_p_genuine_exactly_once` now asserts against the artifact, where
+   risk is genuinely fractional, and discriminates between the two candidate formulas rather
+   than matching to a tolerance the artifact's 4-decimal rounding would not support.
+
+   The drift guardrail's trade-off table moved with it (159 false auto-actions avoided
+   against 10, 2,772 analyst minutes against 336) and was **also** still missing the
+   `bin_dense` profile, added to the PSI table above it and not to this one. Both tables are
+   re-derived from the artifact now.
+
+27. **A stale audit dossier, in the one fence a reader would most trust.**
+   `docs/evaluation.md` published a block presented as the output of
+   `koronis.incident.dossier()` with six superseded figures: remaining P50 309 [P90 557],
+   exposure ₹22,584 [₹40,658], expected ₹1,685 vs ₹22,557. The artifact says 348 [555],
+   ₹25,366 [₹40,542], ₹1,768 vs ₹25,331. The demo site builds the same block from the
+   artifact at runtime, so the shipped page and the shipped document printed different
+   dossiers for the same incident.
+
+   The figure guard could not see it, by design: it stripped fenced blocks with the comment
+   *"code blocks are not claims"*. A fence holding a **command** is not a claim; a fence
+   holding **program output** is exactly a claim, and is the place a reader is least likely
+   to doubt. The guard now strips only command fences, and the dossier is re-derived from
+   the artifact and required verbatim, like a table.
+
+28. **A claim that was true of one family and published as true of both.** The README read
+   "the best per-event result in a capacity sweep across two model families is the *smallest*
+   GBDT (1,550 parameters, PR-AUC 0.2891)". The best per-event result in that sweep is the
+   per-event **network** at 0.3279. The sentence was true of the gradient-boosted family —
+   `docs/ai-decisions.md` says "*its* best result in the sweep is its smallest", correctly
+   scoped — and became false when the qualifier was dropped on the way into the README. The
+   conclusion is unaffected: 0.3279 is still nowhere near the graph model's 0.9915.
+
 An inference benchmark reporting p50 1.78 ms was also discarded: it was measured while a
 training job ran on the same machine. The idle run is 0.91 ms.
 
@@ -428,10 +486,14 @@ the six, listed so the count in the README is checkable rather than remembered.
 
 | 8 | the loader **has** an IEEE-CIS path, declined on measured grounds | the path could not run at all: `DeviceInfo` is in a file it never opened (defect 23) |
 | 9 | the demo's evidence link targets were **already implemented** before review | the only commit that has ever touched `evidence_ids` is the one that made that claim (defect 24) |
+| 10 | the causal policy costs **₹3,405 against the oracle's ₹3,145**, matching it on 6 of 7 actions | ₹9,282 and 1 of 7, once `P(genuine)` stopped being applied twice (defect 26) |
+| 11 | the **best per-event result** in the capacity sweep is the smallest GBDT at 0.2891 | true of that family only; the per-event network reaches 0.3279 (defect 28) |
 
-Six of the nine were found by running an experiment rather than by reading code, and every
-one of them was a claim that flattered the project. The ninth was caught by a reviewer
-reading `git log`, which is the check that no test in this repository performs.
+Six of the eleven were found by running an experiment rather than by reading code, and
+every one of them was a claim that flattered the project. The ninth was caught by a reviewer
+reading `git log`, which is the check that no test in this repository performs. The tenth is
+the most expensive: it cost a headline number, and it was only visible because the two
+arms of a comparison were finally required to use the same formula.
 
 
 Three lessons, none about neural networks. From (1) and (4): a property you assert in a

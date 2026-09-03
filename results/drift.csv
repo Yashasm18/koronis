@@ -1,6 +1,6 @@
 profile,psi,drifted,incidents,auto_raw,false_auto_raw,false_avoided,true_downgraded,minutes_added
-base,0.141,0.0,10.0,2.0,1,0,0,0.0
-subscription,0.584,1.0,13.0,3.0,3,3,10,108.0
-marketplace,0.924,1.0,36.0,2.0,1,1,10,84.0
-flash_sale,0.4,1.0,19.0,4.0,6,6,10,144.0
-bin_dense,0.631,1.0,2.0,1.0,0,0,10,72.0
+base,0.141,0.0,10.0,10.0,18,0,0,0.0
+subscription,0.584,1.0,13.0,13.0,27,27,22,540.0
+marketplace,0.924,1.0,36.0,36.0,79,79,22,1164.0
+flash_sale,0.4,1.0,19.0,19.0,52,52,22,840.0
+bin_dense,0.631,1.0,2.0,2.0,1,1,22,228.0

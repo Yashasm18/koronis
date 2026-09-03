@@ -145,7 +145,14 @@ VALUES = _artifact_values()
 
 
 def _figures(text: str):
-    text = re.sub(r"```.*?```", "", text, flags=re.S)     # code blocks are not claims
+    # A fence holding a COMMAND is not a claim; a fence holding program OUTPUT
+    # is. Stripping both let a stale audit dossier sit in docs/evaluation.md
+    # with six superseded figures, presented as what koronis.incident.dossier()
+    # prints - the one place in the repo a reader would most expect to be
+    # looking at real output (defect 27).
+    text = re.sub(r"```(?:bash|sh|console|python|py|json|mermaid)\b.*?```", "",
+                  text, flags=re.S)
+    text = re.sub(r"```\n(?=[^\n]*\$ )" + r".*?```", "", text, flags=re.S)
     for pattern, kind in PATTERNS:
         for m in re.finditer(pattern, text):
             token = m.group(1)

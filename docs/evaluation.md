@@ -49,7 +49,7 @@ them and recommends the intervention with the lowest expected cost, not the one 
 the highest risk score:
 
 ```
-402 event alerts  →  7 incidents  →  2 actions recommended
+402 event alerts  →  7 incidents  →  7 actions recommended
 ```
 
 One test stream, end to end — the same stream the demo replays. Of those two actions one was wrong: a two-attempt incident rate-limited where the oracle would have left it alone. The other five incidents are correctly left on `monitor`.
@@ -80,10 +80,10 @@ Spread          395 alerted attempts · 60 devices · 60 IPs · 60 BINs
                 per-entity load 6.6/device, 6.6/IP, 6.6/BIN  (binding velocity τ = 8)
 Consolidation   395 event alerts → 1 incident · link window 900 s
 Incident risk   1.000  (recalibrated logistic on calibration incidents)
-Forecast        decided after 12 events · remaining P50 309 [P90 557]
-                exposure P50 ₹22,584 [P90 ₹40,658]
-Recommendation  Hold + analyst review — hold matching attempts, queue for review
-                expected ₹1,685  vs ₹22,557 to keep monitoring
+Forecast        decided after 12 events · remaining P50 348 [P90 555]
+                exposure P50 ₹25,366 [P90 ₹40,542]
+Recommendation  hold_review — hold matching attempts and queue for analyst review
+                expected ₹1,768  vs ₹25,331 to keep monitoring
                 oracle action: hold_review  (matches)
 ```
 
@@ -130,8 +130,8 @@ Median across 8 independent test streams:
 |---|---:|---:|---:|---:|
 | always allow | 0.0 | 0.0 | 0.0 | ₹53,144 |
 | always hold | 10.5 | 6.0 | 126.0 | ₹50,307 |
-| event-by-event thresholding | 1.0 | 0.0 | 211.0 | ₹6,602 |
-| **causal policy** *(forecast only)* | 1.0 | 0.0 | 12.0 | ₹3,405 |
+| event-by-event thresholding | 10.5 | 6.0 | 211.0 | ₹12,356 |
+| **causal policy** *(forecast only)* | 10.5 | 6.0 | 12.0 | ₹9,282 |
 | oracle policy *(upper bound)* | 1.0 | 0.0 | 12.0 | ₹3,145 |
 
 Fractional counts are medians across an even number of streams. Event thresholding reaches
@@ -142,11 +142,11 @@ relative to its median, the policy escalates to analyst review rather than autom
 **On the ₹0 regret this project once retracted.** An earlier version reported zero action
 regret and treated it as a result; it was retracted when the cause turned out to be a
 generator defect. That defect stayed fixed. On the current demo stream regret is
-**₹520** with 6 of
+**₹4,750** with 1 of
 7 actions matching the oracle — non-zero, which is what an honest
 forecast-only policy should look like. Across the eight streams the oracle still leads,
 ₹3,145 against
-₹3,405: not knowing the future still costs.
+₹9,282: not knowing the future still costs, and costs far more than this repo reported before defect 26.
 
 ### Incident-level calibration
 
@@ -802,12 +802,16 @@ analyst review. That is a trade, not a free win:
 
 | profile | false auto-actions avoided | true responses downgraded | analyst minutes added |
 |---|---:|---:|---:|
-| `subscription` | 3 | 10 | 108 |
-| `marketplace` | 1 | 10 | 84 |
-| `flash_sale` | 6 | 10 | 144 |
+| `subscription` | 27 | 22 | 540 |
+| `marketplace` | 79 | 22 | 1164 |
+| `flash_sale` | 52 | 22 | 840 |
+| `bin_dense` | 1 | 22 | 228 |
 
-Across the shifted profiles the guardrail prevents 10 false automated interventions and
-downgrades 30 genuine responses, adding 336 analyst minutes.
+Across the four shifted profiles the guardrail prevents 159 false automated
+interventions and downgrades 88 genuine responses, adding 2,772 analyst minutes. This table
+had held only three profiles and pre-defect-26 numbers: `bin_dense` was added to the PSI
+table above without being added here, and the counts moved when the policy stopped applying
+`P(genuine)` twice.
 
 **Status: experimental decision support, not a safety control.** The cut-off is fitted on
 16 base streams and the false-flag rate then measured on 12 disjoint base streams comes

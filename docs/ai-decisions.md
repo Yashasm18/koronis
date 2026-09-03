@@ -68,7 +68,7 @@ constants, and the choice among them is an argmin over expected cost with a conf
 forecast as its only uncertain input. That decision has a closed form; wrapping it in a
 planner would add nondeterminism to an argmin and make the audit dossier harder to defend,
 which is the opposite of what this track asks for. The gap left to close is small and
-measured: **₹3,405 against an oracle's ₹3,145** across eight streams.
+measured: **₹9,282 against an oracle's ₹3,145** across eight streams.
 
 **Per-entity embedding tables.** They would fit the entities in the training data, and
 every entity in production is one the model has never seen. Inductiveness is the reason the

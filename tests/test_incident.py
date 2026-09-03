@@ -1,3 +1,5 @@
+import pathlib
+
 import numpy as np
 import pytest
 
@@ -6,9 +8,17 @@ from koronis.data.campaigns import inject
 from koronis.data.schema import CampaignSpec
 from koronis.eval.policy import evaluate_policies, incident_reliability
 from koronis.incident import (
-    ACTION_BY_NAME, IncidentRisk, build_incidents, choose_action, dossier,
+    ACTION_BY_NAME,
+    AUTONOMOUS_ACTIONS,
+    IncidentRisk,
+    build_incidents,
+    choose_action,
+    dossier,
     expected_cost,
 )
+
+
+ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 
 def _detail_record(**over):
@@ -238,3 +248,54 @@ def test_lifting_the_link_guard_reproduces_the_merge():
     merged = build_incidents(ev, sc, 0.5, max_link_share=1.0)
     assert len(merged) == 1
     assert merged[0].n_attempts == 600
+
+
+def test_the_policy_applies_p_genuine_exactly_once():
+    """The causal and oracle arms must use the same cost formula.
+
+    forecast.py and docs/evaluation.md both state it:
+
+        expected remaining exposure = P(genuine) x forecast(remaining) x cost
+
+    `expected_cost` implements that with `risk * exposure`. The policy used to
+    ALSO pass `risk * p50` as the remaining count, so the causal arm computed
+    risk^2 * p50 while the oracle arm passed an unconditional count and got
+    risk * true_remaining. Two arms of the published regret, computed
+    differently - and the error changed the chosen action on 6 of 7 incidents.
+
+    No existing test could see it: the oracle-comparison fixture drives the
+    policy with `_OracleRisk`, which returns `campaign_share` = 1.0, and
+    risk^2 == risk at 1.0. This asserts against the published artifact, where
+    risk is genuinely fractional.
+    """
+    import json
+
+    detail = json.loads((ROOT / "results" / "policy.json").read_text())["detail"]
+    fractional = [d for d in detail if 0.0 < d["risk"] < 1.0]
+    assert fractional, (
+        "every incident in policy.json has risk 0 or 1, so this test cannot "
+        "distinguish risk from risk^2 - the exact blindness it exists to fix")
+
+    # Compare against BOTH candidate formulas rather than to a tolerance: the
+    # artifact rounds risk to four decimals, so an exact match is not available,
+    # but "which formula is this closer to" is unambiguous and is the actual
+    # question.
+    wrong = []
+    for d in fractional:
+        once = int(round(d["forecast_remaining_p50"]))
+        twice = int(round(d["risk"] * d["forecast_remaining_p50"]))
+        for action in AUTONOMOUS_ACTIONS:
+            got = d["option_costs"][action.name]
+            d_once = abs(expected_cost(action, d["risk"], once) - got)
+            d_twice = abs(expected_cost(action, d["risk"], twice) - got)
+            if d_twice < d_once:
+                wrong.append(
+                    f"{d['incident_id']}/{action.name}: published {got:.2f} is "
+                    f"closer to risk-applied-twice "
+                    f"({expected_cost(action, d['risk'], twice):.2f}) than to the "
+                    f"documented formula "
+                    f"({expected_cost(action, d['risk'], once):.2f})")
+    assert not wrong, (
+        "published option costs apply P(genuine) twice - the forecast is being "
+        "scaled by risk before expected_cost scales by it again:\n  "
+        + "\n  ".join(wrong))
