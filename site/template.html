@@ -436,6 +436,38 @@ td.rng{color:var(--ink-3);font-size:10.5px}
         <p>The outcome of an attempt is observed only <b>after</b> it is submitted. No detector
         can prevent the attempt it learns from. The value is in stopping the attempts that
         follow, which is why detection latency is reported at all.</p>
+
+        <h3>Where a payment gateway would put it</h3>
+        <p class="assum" style="padding:0">A design proposal, not something that has been
+        built. The placement is reasoned; the constants under it are measured. Nothing in this
+        repository talks to a payment system, and no part of it can.</p>
+        <p>Because it is post-authorisation, it <b>never sits on the checkout's critical
+        path</b>. It consumes the authorisation outcome stream asynchronously and writes
+        decisions to a key-value store keyed by entity, which the pre-auth path reads with a
+        lookup — the same shape as the velocity counters most gateways already run there. A
+        lookup is not a model call.</p>
+        <ul>
+          <li><b>Sizing follows from the measured constants.</b> 0.91 ms per event and 1,095
+          events/sec per worker, so nine workers cover roughly 9,900 events/sec. Frequency
+          state is fixed at 4 MB however many distinct entity values pass through — which
+          matters, because a card-testing campaign mints a fresh card id per attempt.</li>
+          <li><b>Splitting it across machines costs accuracy, and that was measured rather
+          than assumed.</b> Partitioning a graph deletes edges; replicating the entities that
+          actually recur restores recall from 0.72 to 0.99 at eight shards, for 2.42&times;
+          the scoring work. Reported honestly: <b>every partitioned configuration is worse
+          than not partitioning at all</b> — ₹645 undivided against ₹2,412 at eight shards —
+          so more workers is a cost to justify, not a free lever.</li>
+          <li><b>The output is a recommendation with its evidence.</b> An incident arrives
+          with the attempts it links, the forecast it was decided on, and the cost of each
+          alternative. It is a signal source for an existing risk stack, not a replacement
+          for one.</li>
+        </ul>
+        <p><b>What would have to be true first</b>, stated plainly: the model is fitted once
+        and frozen, which is what makes the hold-out honest and is not what a deployment
+        wants; the data is semi-synthetic, and BIN — the relation carrying most of the signal
+        — is the one whose real behaviour differs most from the simulation; and any
+        deployment would begin in <b>shadow mode</b>, scoring and logging without acting,
+        until its false-positive rate had been measured on real traffic.</p>
       </div></div>
       <div class="panel"><div class="ph"><h2>Limitations</h2></div><div class="prose">
         <h3>Semi-synthetic data</h3>
