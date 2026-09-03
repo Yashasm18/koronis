@@ -66,6 +66,15 @@ transcribed by hand. The experiments that write those files are listed under
 [Reproducing everything](README.md#reproducing-everything) — that list is the single copy,
 deliberately not duplicated here.
 
+**Running an experiment overwrites its artifact, so `git status` after one is not noise.**
+`python -m koronis.cli benchmark` run merely to check the CLI still works rewrites
+`results/benchmark.json` with that machine's timings, and `git add -A` will then commit a
+number the prose was never written against. The figure guards catch it — that is what they
+are for — but they catch it in CI, after the push. Check `git diff results/` before
+committing, and either revert the artifact or re-run the docs against it deliberately.
+The timing experiments are the ones to watch: they are the only artifacts whose values
+depend on the machine and its load rather than on a seed.
+
 The demo site and the README's screen recording are generated too, never hand-edited:
 
 ```bash
