@@ -487,6 +487,26 @@ Every defect below was surfaced by running experiments, not by reading code.
    everywhere — and that the column varies at all, since a broadcast of zeros would satisfy
    the first half. Reverted, it fails on the first assertion.
 
+30. **A fallback that was indistinguishable from the fix it stood in for.** The README GIF
+   opened on a blank white page, because Playwright starts recording when the browser
+   context is created and the script navigates after that. The trim written to remove it
+   measured the blank run rather than hard-coding an offset — mean luma per frame, first
+   frame that differs from the opening one — so that it could not rot when the demo's waits
+   changed.
+
+   It never ran. The probe asked `ffprobe` for `pkt_pts_time`, which current builds have
+   removed; rather than failing, ffprobe **exits 0 and omits the column**. So `check=True`
+   was satisfied, the parsed row list came back empty, and the `if not frames: return 0.0`
+   fallback did exactly what it was written to do — quietly. Two recordings shipped with the
+   white frames the code claimed to have removed, and the only evidence was in the pixels.
+
+   The field is `pts_time`, and the measured lead-in is **1.40 s**, not the ~0.5 s the 8 fps
+   GIF had suggested: the source runs at 25 fps and the coarser sampling had been hiding
+   most of it. The fallback now prints which branch it took, so *trimming nothing* is
+   visible in the recorder's own output instead of inferable only from the result. This is
+   the same rule the stream applies to events it cannot score — refuse loudly and count it,
+   never absorb it.
+
 An inference benchmark reporting p50 1.78 ms was also discarded: it was measured while a
 training job ran on the same machine. The idle run is 0.91 ms.
 
